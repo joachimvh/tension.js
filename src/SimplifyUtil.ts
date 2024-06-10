@@ -298,7 +298,7 @@ export function clauseToTriples(clause: Clause): ClauseToTripleResult[] | undefi
     return getQuads(clause.positive).map((quad): ClauseToTripleResult => ({ quad, positive: true}));
   }
   if (clause.negative.size === 1) {
-    return getQuads(clause.positive).map((quad): ClauseToTripleResult => ({ quad, positive: false}));
+    return getQuads(clause.negative).map((quad): ClauseToTripleResult => ({ quad, positive: false}));
   }
   return clauseToTriples(clause.clauses[0]);
 }
