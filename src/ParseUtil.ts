@@ -84,12 +84,17 @@ function removePrefixes(entry: Record<string, unknown>, prefixes: Record<string,
     }
   }
   for (const key of [ '@id', '@type' ]) {
-    const value = entry[key] as string | undefined;
+    let value = entry[key] as string | string[] | undefined;
     if (value) {
-      const prefixMatch = prefixKeys.find(prefix => value.startsWith(prefix));
-      if (prefixMatch) {
-        entry[key] = prefixes[prefixMatch] + value.slice(`${prefixMatch}:`.length);
-      }
+      value = Array.isArray(value) ? value : [ value ];
+      value = value.map((child): string => {
+        const prefixMatch = prefixKeys.find(prefix => child.startsWith(prefix));
+        if (prefixMatch) {
+          return prefixes[prefixMatch] + child.slice(`${prefixMatch}:`.length);
+        }
+        return child;
+      });
+      entry[key] = value.length === 1 ? value[0] : value;
     }
   }
 }
@@ -105,7 +110,10 @@ function parseGraffiti(graffiti: object[]): BlankNode[] {
   return result;
 }
 
-function parseQuads(input: Record<string, unknown>, prefixes: Record<string, string>, subject?: NamedNode | BlankNode, predicate?: NamedNode): Quad[] {
+function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], prefixes: Record<string, string>, subject?: NamedNode | BlankNode, predicate?: NamedNode): Quad[] {
+  if (Array.isArray(input)) {
+    return input.flatMap((child): Quad[] => parseQuads(child, prefixes, subject, predicate));
+  }
   removePrefixes(input, prefixes);
   if (!input['@id']) {
     // TODO: literals
@@ -126,7 +134,11 @@ function parseQuads(input: Record<string, unknown>, prefixes: Record<string, str
 
     const val = input[key];
     if (key === '@type') {
-      result.push(DF.quad(newSubject, RDF_TYPE, DF.namedNode(val as string)));
+      if (Array.isArray(val)) {
+        result.push(...val.map((child): Quad => DF.quad(newSubject, RDF_TYPE, DF.namedNode(child))))
+      } else {
+        result.push(DF.quad(newSubject, RDF_TYPE, DF.namedNode(val as string)));
+      }
     } else if (typeof val === 'string' || typeof val === 'number') {
       result.push(DF.quad(newSubject, DF.namedNode(key), DF.literal(val)));
     } else if (typeof val === 'boolean') {
