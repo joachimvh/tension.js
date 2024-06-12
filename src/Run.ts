@@ -43,7 +43,10 @@ export function run(args: string[]): void {
   const parsed = parseRoot(n3);
   const formula = pullGraffitiUp(removeDuplicateBlankNodes(parsed));
   const root = toClause(formula);
+  
+  let answerClause = opts.answer ? findAnswerClause(formula) : undefined;
+  
   logger.debug(`Quantifier levels: ${inspect(root.quantifiers)}`);
   logger.debug(`Starting clause: ${stringifyClause(root)}`);
-  reason(root, findAnswerClause(formula), maxSteps);
+  reason(root, answerClause, maxSteps);
 }
