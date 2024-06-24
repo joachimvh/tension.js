@@ -8,13 +8,13 @@ import { reason } from './ReasonUtil';
 
 const logger = getLogger('Run');
 
-export function run(args: string[]): void {
+export async function run(args: string[]): Promise<void> {
   const program = new Command();
   
   program
     .name('node bin/tension.js')
     .showHelpAfterError()
-    .argument('[string]', 'N3 string to parse, if no file was provided');
+    .argument('[string]', 'N3 string to parse, or a link to an N3 source, if no file was provided');
   
   program
     .option('-s, --steps <number>', 'max amount of steps', '5')
@@ -38,7 +38,13 @@ export function run(args: string[]): void {
   setLogLevel(opts.logLevel);
   
   const maxSteps = parseInt(opts.steps, 10);
-  const n3 = opts.file ? readFileSync(opts.file).toString() :  program.args[0];
+  let n3: string;
+  if (opts.file) {
+    n3 = readFileSync(opts.file).toString();
+  } else {
+    const input = program.args[0];
+    n3 = isUrl(input) ? await (await fetch(input)).text() : input;
+  }
 
   const parsed = parseRoot(n3);
   const formula = pullGraffitiUp(removeDuplicateBlankNodes(parsed));
@@ -49,4 +55,16 @@ export function run(args: string[]): void {
   logger.debug(`Quantifier levels: ${inspect(root.quantifiers)}`);
   logger.debug(`Starting clause: ${stringifyClause(root)}`);
   reason(root, answerClause, maxSteps);
+}
+
+function isUrl(input: string): boolean {
+  let url;
+
+  try {
+    url = new URL(input);
+  } catch {
+    return false;
+  }
+
+  return url.protocol === "http:" || url.protocol === "https:";
 }
