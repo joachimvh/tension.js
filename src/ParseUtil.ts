@@ -35,14 +35,16 @@ export function parseRoot(n3: string): Formula {
 }
 
 function parseFormula(graph: Record<string, unknown>, prefixes: Record<string, string>): Formula {
-  if (!graph['@graph'] || !Array.isArray(graph['@graph'])) {
+  if (!graph['@graph']) {
     throw new Error(`Unexpected formula: ${JSON.stringify(graph)}`);
   }
+  const subGraph = Array.isArray(graph['@graph']) ? graph['@graph'] : [ graph['@graph'] ];
+  
   const result: Formula = {
     data: new Store(),
     surfaces: [],
   }
-  for (const entry of graph['@graph']) {
+  for (const entry of subGraph) {
     const parsed = parseEntry(entry, prefixes);
     if (Array.isArray(parsed)) {
       result.data.addQuads(parsed);

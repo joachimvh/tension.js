@@ -131,10 +131,6 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     }
   }
   
-  if (!quads.positive && !quads.negative && !clauses) {
-    return;
-  }
-  
   const result: Clause = {
     conjunction: false,
     positive: quads.positive ?? clause.positive,
@@ -145,6 +141,11 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
   // We have removed all false values, so nothing true is left
   if (result.clauses.length === 0 && result.positive.size === 0 && result.negative.size === 0) {
     throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${stringifyClause(clause)}`);
+  }
+
+  // Putting this after the contradiction check in case initial input already has an empty surface
+  if (!quads.positive && !quads.negative && !clauses) {
+    return;
   }
 
   return result;
@@ -190,10 +191,6 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
     }
   }
 
-  if (!quads.positive && !quads.negative) {
-    return;
-  }
-
   const result: Clause = {
     conjunction: false,
     positive: quads.positive ?? clause.positive,
@@ -203,6 +200,11 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
   
   if (result.positive.size === 0 && result.negative.size === 0) {
     return true;
+  }
+  
+  // Putting this after the tautology check in case initial input already has an empty surface
+  if (!quads.positive && !quads.negative) {
+    return;
   }
 
   return result;
