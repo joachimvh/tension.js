@@ -107,7 +107,12 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
         if (idxA === idxB || removeIdx.has(idxB)) {
           continue;
         }
-        if (impliesQuad(quadB, quadA, root.quantifiers)) {
+        // TODO: `impliesQuad` can give wrong results since \forall x,y: f(x) | f(y) | h(y) does not imply \forall x,y: f(x) | h(y)
+        // TODO: need to also take into account that \forall x: f(x) | f(A) does not imply \forall x: f(x)!
+        //       it could be that only f(A) is true for all values
+        //       \forall x: f(x) | g(x) | f(A) also does not imply \forall x: g(x) | f(A)!
+        // if (impliesQuad(quadB, quadA, root.quantifiers)) {
+        if (quadA.equals(quadB)) {
           removeIdx.add(idxA);
           logger.debug(`${stringifyQuad(quadB)} implies ${stringifyQuad(quadA)} can be removed from disjunction (same disjunction)`);
           break;
