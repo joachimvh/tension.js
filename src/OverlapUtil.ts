@@ -122,6 +122,7 @@ function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
   });
 }
 
+// TODO: it's impossible for this function to generate a clause that is bigger than the sum of its parents
 // TODO: assumes removeClause in the relevant side has no value
 export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
   const side = left ? 'left' : 'right';
@@ -145,7 +146,9 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   // The combined clauses of both sides
   const clauses: Clause[] = [
     ...overlap[side].clause.clauses,
-    ...(overlap[otherSide].removeClause ? overlap[otherSide].clause.clauses.filter((child): boolean => child !== overlap[otherSide].removeClause) : overlap[otherSide].clause.clauses),
+    ...(overlap[otherSide].removeClause ? 
+      overlap[otherSide].clause.clauses.filter((child): boolean => child !== overlap[otherSide].removeClause) : 
+      overlap[otherSide].clause.clauses),
   ];
 
   // Generate the triples that will be in the new clause.
@@ -158,7 +161,21 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
     positive: applyBindingsToStore(mergedPositive, overlap.binding) ?? mergedPositive,
     negative: applyBindingsToStore(mergedNegative, overlap.binding) ?? mergedNegative,
     clauses,
+  });
+  // TODO: doing this after merge might be bad I think, need to find example though
+  // TODO: it's possible that the removeClause contains even more information about things that can be removed
+  //       e.g., A || B and (-A && -B) || C. Standard solution would be to generate B || C, but actually this can be simplified to C
+  const removeClause = overlap[otherSide].removeClause;
+  if (removeClause) {
+    for (const quad of applyBindingsToStore(removeClause.positive, overlap.binding) ?? removeClause.positive) {
+      result.negative.removeQuad(quad);
+    }
+    for (const quad of applyBindingsToStore(removeClause.negative, overlap.binding) ?? removeClause.negative) {
+      result.positive.removeQuad(quad);
+    }
   }
+  
+  return result;
 }
 
 // TODO: by stopping at the first hit we might miss other options (especially if we compare clause subsets)
