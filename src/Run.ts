@@ -20,6 +20,7 @@ export async function run(args: string[]): Promise<void> {
     .option('-s, --steps <number>', 'max amount of steps', '5')
     .option('-a, --answer', 'stop when answer surface is fulfilled')
     .option('-f,--file <string>', 'file to read from')
+    .option('-t,--timer', 'runs a timer')
     .addOption(new Option('-l, --logLevel <level>', 'logger level, currently using info/debug').choices(LOG_LEVELS).default('info'));
   
   program.parse(args);
@@ -36,6 +37,10 @@ export async function run(args: string[]): Promise<void> {
   }
 
   setLogLevel(opts.logLevel);
+
+  if (opts.timer) {
+    console.time('timer');
+  }
   
   const maxSteps = parseInt(opts.steps, 10);
   let n3: string;
@@ -55,6 +60,10 @@ export async function run(args: string[]): Promise<void> {
   logger.debug(`Quantifier levels: ${inspect(root.quantifiers)}`);
   logger.debug(`Starting clause: ${stringifyClause(root)}`);
   reason(root, answerClause, maxSteps);
+  
+  if (opts.timer) {
+    console.timeEnd('timer');
+  }
 }
 
 function isUrl(input: string): boolean {
