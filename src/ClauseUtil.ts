@@ -1,6 +1,6 @@
 import { BlankNode, NamedNode, Quad } from '@rdfjs/types';
 import { DataFactory, Store } from 'n3';
-import { Formula, NegativeSurface, QUAD_POSITIONS } from './ParseUtil';
+import { Formula, NegativeSurface, QUAD_POSITIONS, stringifyClause } from './ParseUtil';
 
 
 export type Clause = {
@@ -17,6 +17,16 @@ export type LeafClause = Clause & {
 export type RootClause = Clause & {
   quantifiers: Record<string, number>;
 };
+
+export function createClause(options: Partial<Clause> & { conjunction: boolean }): Clause {
+  return {
+    ...options,
+    conjunction: options.conjunction,
+    positive: options.positive ?? new Store(),
+    negative: options.negative ?? new Store(),
+    clauses: options.clauses ?? [],
+  }
+}
 
 export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> = new Set(), map: Record<string, BlankNode> = {}): Formula {  
   const quads = formula.data.getQuads(null, null, null, null);
@@ -100,10 +110,7 @@ export function optimizeSurfaceGraffiti(surface: NegativeSurface): void {
 
 export function toClause(formula: Formula): RootClause {
   const rootClause: RootClause = {
-    conjunction: true,
-    positive: formula.data,
-    negative: new Store(),
-    clauses: [],
+    ...createClause({ conjunction: true, positive: formula.data }),
     quantifiers: {},
   }
   for (const surface of formula.surfaces) {
@@ -145,12 +152,12 @@ export function surfaceToClause(surface: NegativeSurface, quantifierMap: Record<
     }
   }
   
-  const clause: Clause = {
+  const clause = createClause({
     conjunction: true,
     positive,
     negative,
     clauses,
-  };
+  });
   // TODO: this implies it might have been smarter to start from the bottom
   return negateClause(clause);
 }
@@ -166,47 +173,40 @@ export function* flattenClause(clause: Clause): IterableIterator<LeafClause> {
   }
   for (const product of crossProduct) {
     // Combine every product with the remaining triples that were already there
-    yield {
+    yield createClause({
       conjunction: product.conjunction,
       positive: clause.positive.size === 0 ? product.positive : mergeData(product.positive, clause.positive),
       negative: clause.negative.size === 0 ? product.negative : mergeData(product.negative, clause.negative),
-      clauses: [],
-    }
+    }) as LeafClause;
   }
 }
 
 export function* crossProductClauses(clauses: LeafClause[], conjunction: boolean): IterableIterator<LeafClause> {
   if (clauses.length === 0) {
-    yield {
-      conjunction,
-      positive: new Store(),
-      negative: new Store(),
-      clauses: [],
-    }
+    yield createClause({ conjunction }) as LeafClause;
     return;
   }
   const clause = clauses.pop()!;
   for (const product of crossProductClauses(clauses, conjunction)) {
     for (const side of [ 'positive', 'negative' ] as const) {
       for (const quad of getQuads(clause[side])) {
-        yield {
+        yield createClause({
           conjunction: product.conjunction,
           positive: side === 'positive' ? mergeData(product.positive, quad) : product.positive,
           negative: side === 'negative' ? mergeData(product.negative, quad) : product.negative,
-          clauses: [],
-        };
+        }) as LeafClause;
       }
     }
   }
 }
 
 export function negateClause(clause: Clause): Clause {
-  return {
+  return createClause({
     conjunction: !clause.conjunction,
     positive: clause.negative,
     negative: clause.positive,
     clauses: clause.clauses.map(negateClause),
-  };
+  });
 }
 
 export function isSameClause(left: Clause, right: Clause): boolean {
@@ -239,6 +239,7 @@ export function isDisjunctionSubset(left: Clause, right: Clause): boolean {
   // we still need f(A) to make our reasoning steps work,
   // which is why we only check equality here.
   // TODO: check for situations where having different universals in the same spot results in the same clause
+  //       might also be relevant to check where quads of one are part of the clause of another
   for (const side of [ 'positive', 'negative' ] as const) {
     for (const leftQuad of left[side]) {
       if (!right[side].has(leftQuad)) {

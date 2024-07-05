@@ -2,7 +2,7 @@ import { BlankNode, NamedNode, Quad, Term } from '@rdfjs/types';
 import { DataFactory, Store } from 'n3';
 import { N3Parser } from 'n3-parser.js';
 import { quadToStringQuad } from 'rdf-string';
-import { Clause } from './ClauseUtil';
+import { Clause, createClause } from './ClauseUtil';
 
 const DF = DataFactory;
 
@@ -179,12 +179,11 @@ function extractAnswerClause(surface: NegativeSurface, level: number): Clause {
   
   const positiveLevel = level % 2 === 0;
   
-  return {
+  return createClause({
     conjunction: positiveLevel,
     positive: positiveLevel ? surface.formula.data : new Store(),
     negative: positiveLevel ? new Store() : surface.formula.data,
-    clauses: [],
-  }
+  });
 }
 
 export function toSimpleFormula(formula: Formula): Record<keyof Formula, unknown> {

@@ -1,6 +1,6 @@
 import { Quad, Term } from '@rdfjs/types';
 import { applyBindingsToStore } from './BindUtil';
-import { Clause, mergeData, RootClause } from './ClauseUtil';
+import { Clause, createClause, mergeData, RootClause } from './ClauseUtil';
 import { getLogger } from './LogUtil';
 import { QUAD_POSITIONS, stringifyClause } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
@@ -105,21 +105,21 @@ function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
   // For every part remaining in the "other" disjunction: create a new disjunction entry and then combine these with the remaining parts of the initial disjunction
   const finalClauses: Clause[] = overlap[side].clause.clauses.filter((clause): boolean => clause !== removeClause);
   for (const quad of otherPositive) {
-    finalClauses.push({ conjunction: true, positive: mergeData(quad, crossPositive), negative: crossNegative, clauses: [] });
+    finalClauses.push(createClause({ conjunction: true, positive: mergeData(quad, crossPositive), negative: crossNegative }));
   }
   for (const quad of otherNegative) {
-    finalClauses.push({ conjunction: true, positive: crossPositive, negative: mergeData(quad, crossNegative), clauses: [] });
+    finalClauses.push(createClause({ conjunction: true, positive: crossPositive, negative: mergeData(quad, crossNegative) }));
   }
   for (const clause of otherClauses) {
-    finalClauses.push({ conjunction: true, positive: mergeData(crossPositive, clause.positive), negative: mergeData(crossNegative, clause.negative), clauses: [] });
+    finalClauses.push(createClause({ conjunction: true, positive: mergeData(crossPositive, clause.positive), negative: mergeData(crossNegative, clause.negative) }));
   }
 
-  return {
+  return createClause({
     conjunction: false,
     positive: overlap[side].clause.positive,
     negative: overlap[side].clause.negative,
     clauses: finalClauses,
-  };
+  });
 }
 
 // TODO: assumes removeClause in the relevant side has no value
@@ -153,7 +153,7 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   const mergedPositive = mergeData(positive, otherPositive);
   const mergedNegative = mergeData(negative, otherNegative);
 
-  return {
+  const result = createClause({
     conjunction: false,
     positive: applyBindingsToStore(mergedPositive, overlap.binding) ?? mergedPositive,
     negative: applyBindingsToStore(mergedNegative, overlap.binding) ?? mergedNegative,

@@ -1,6 +1,6 @@
 import { NamedNode, Quad, Term } from '@rdfjs/types';
 import { DataFactory, Store } from 'n3';
-import { Clause, RootClause } from './ClauseUtil';
+import { Clause, createClause, RootClause } from './ClauseUtil';
 import { QUAD_POSITIONS } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
 
@@ -55,12 +55,12 @@ export function applyBindings(clause: Clause, bindings: Record<string, Term>): C
   const boundNegative = applyBindingsToStore(clause.negative, bindings);
   change = change || Boolean(boundPositive) || Boolean(boundNegative);
   if (change) {
-    return {
+    return createClause({
       conjunction: clause.conjunction,
       positive: boundPositive ?? clause.positive,
       negative: boundNegative ?? clause.negative,
       clauses,
-    };
+    });
   }
 }
 

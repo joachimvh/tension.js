@@ -1,6 +1,6 @@
 import { BlankNode, Quad, Term } from '@rdfjs/types';
 import { Store } from 'n3';
-import { Clause, getQuads, mergeData, RootClause } from './ClauseUtil';
+import { Clause, createClause, getQuads, mergeData, RootClause } from './ClauseUtil';
 import { getLogger } from './LogUtil';
 import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
 
@@ -136,12 +136,12 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     }
   }
   
-  const result: Clause = {
+  const result = createClause({
     conjunction: false,
     positive: quads.positive ?? clause.positive,
     negative: quads.negative ?? clause.negative,
     clauses: clauses ?? clause.clauses,
-  };
+  });
 
   // We have removed all false values, so nothing true is left
   if (result.clauses.length === 0 && result.positive.size === 0 && result.negative.size === 0) {
@@ -196,12 +196,11 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
     }
   }
 
-  const result: Clause = {
+  const result = createClause({
     conjunction: false,
     positive: quads.positive ?? clause.positive,
     negative: quads.negative ?? clause.negative,
-    clauses: [],
-  };
+  });
   
   if (result.positive.size === 0 && result.negative.size === 0) {
     return true;
