@@ -10,6 +10,8 @@ import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
 
 const logger = getLogger('Simplify');
 
+// TODO: need more ways to see that we don't need to check for simplification,
+//       if there are no new root quads many surfaces will remain unchanged
 export function simplifyRoot(root: RootClause): boolean {
   let change = false;
   // Simplify the child clauses
@@ -90,6 +92,20 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     clauses = clauses || [ ...clause.clauses ];
     clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
   }
+
+  removeClauseIdx.clear();
+  // A || (A && B) implies A
+  // Need to make sure we use the new clauses array if there is one
+  for (const [ idx, child ] of (clauses || clause.clauses).entries()) {
+    // Needs to happen after previous block, so we still find contradictions
+    if (hasDisjunctionSubset(child, { ...clause, clauses: clauses || clause.clauses })) {
+      removeClauseIdx.add(idx);
+    }
+  }
+  if (removeClauseIdx.size > 0) {
+    clauses = clauses || [ ...clause.clauses ];
+    clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
+  }
   
   // Check if we have a tautology
   if (isTautology(root, clause)) {
@@ -100,6 +116,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
   for (const side of [ 'positive', 'negative' ] as const) {
     const clauseQuads = quads[side] ? getQuads(quads[side]!) : getQuads(clause[side]);
     const removeIdx = new Set<number>();
+    const neg = side === 'negative';
     for (const [idxA, quadA] of clauseQuads.entries()) {
       // Remove "duplicates"
       for (const [idxB, quadB] of clauseQuads.entries()) {
@@ -114,7 +131,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
         // if (impliesQuad(quadB, quadA, root.quantifiers)) {
         if (quadA.equals(quadB)) {
           removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(quadB)} implies ${stringifyQuad(quadA)} can be removed from disjunction (same disjunction)`);
+          logger.debug(`${stringifyQuad(quadB, neg)} implies ${stringifyQuad(quadA, neg)} can be removed from disjunction (same disjunction)`);
           break;
         }
       }
@@ -122,11 +139,11 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
         continue;
       }
       // Remove false values
-      for (const rootQuad of root[side === 'positive' ? 'negative' : 'positive']) {
+      for (const rootQuad of root[neg ? 'positive' : 'negative']) {
         // if (impliesQuad(quadA, quadB, root.quantifiers)) {
         if (equalOrLeftUniversal(rootQuad, quadA, root.quantifiers)) {
           removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(rootQuad, true)} is known so ${stringifyQuad(quadA)} can be removed from disjunction (root data)`);
+          logger.debug(`${stringifyQuad(rootQuad, !neg)} is known so ${stringifyQuad(quadA, neg)} can be removed from disjunction (root data)`);
           break;
         }
       }
@@ -212,6 +229,47 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
   }
 
   return result;
+}
+
+// TODO: Used to help simplify (A && B) || (A && B && C) to A && B
+export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
+  for (const quad of clause.positive) {
+    if (parent.positive.has(quad)) {
+      logger.debug(`${stringifyQuad(quad)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
+      return true;
+    }
+  }
+  for (const quad of clause.negative) {
+    if (parent.negative.has(quad)) {
+      logger.debug(`${stringifyQuad(quad, true)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
+      return true;
+    }
+  }
+  for (const conj of parent.clauses) {
+    if (conj === clause) {
+      continue;
+    }
+    let match = true;
+    for (const quad of conj.positive) {
+      if (!clause.positive.has(quad)) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      for (const quad of conj.negative) {
+        if (!clause.negative.has(quad)) {
+          match = false;
+          break;
+        }
+      }
+    }
+    if (match) {
+      logger.debug(`${stringifyClause(conj)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
+      return true;
+    }
+  }
+  return false;
 }
 
 // TODO: level 1
