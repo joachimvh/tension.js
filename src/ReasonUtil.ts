@@ -105,7 +105,7 @@ export function handleNewClause(root: RootClause, clause: Clause, newClauses: Cl
     return false;
   }
   if (simplified.conjunction) {
-    handleConjunctionResult(root, simplified, clause);
+    handleConjunctionResult(root, simplified);
     return true;
   }
   if (additionalCheck && !additionalCheck(simplified)) {

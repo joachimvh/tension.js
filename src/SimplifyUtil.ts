@@ -26,7 +26,7 @@ export function simplifyRoot(root: RootClause): boolean {
       removeClauseIdx.add(idx);
     } else if (simplified?.conjunction) {
       removeClauseIdx.add(idx);
-      handleConjunctionResult(root, simplified, child);
+      handleConjunctionResult(root, simplified);
     } else if (simplified) {
       root.clauses[idx] = simplified;
     }
@@ -46,11 +46,10 @@ export function simplifyRoot(root: RootClause): boolean {
 }
 
 // Adds the triples of a conjunction directly to the root.
-// Original value is used for debug logs
-export function handleConjunctionResult(root: RootClause, conjunction: Clause, original: Clause): void {
+export function handleConjunctionResult(root: RootClause, conjunction: Clause): void {
   for (const side of [ 'positive', 'negative' ] as const) {
     for (const quad of conjunction[side]) {
-      logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')} from ${stringifyClause(original)}`);
+      logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
       root[side].addQuad(quad);
     }
   }
