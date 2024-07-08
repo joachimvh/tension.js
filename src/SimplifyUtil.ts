@@ -10,8 +10,6 @@ import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
 
 const logger = getLogger('Simplify');
 
-// TODO: need more ways to see that we don't need to check for simplification,
-//       if there are no new root quads many surfaces will remain unchanged
 export function simplifyRoot(root: RootClause): boolean {
   let change = false;
   // Simplify the child clauses
@@ -19,11 +17,11 @@ export function simplifyRoot(root: RootClause): boolean {
   for (const [ idx, child ] of root.clauses.entries()) {
     const simplified = simplifyLevel1(root, child);
     change = change || Boolean(simplified);
-    
+
     if (simplified) {
       logger.debug(`Simplified ${stringifyClause(child)} to ${typeof simplified === 'boolean' ? simplified : stringifyClause(simplified)}`);
     }
-    
+
     if (simplified === true) {
       removeClauseIdx.add(idx);
     } else {
@@ -47,20 +45,20 @@ export function simplifyRoot(root: RootClause): boolean {
     root.clauses = root.clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
     change = true;
   }
-  
+
   // A contradiction in root means no useful information can be deduced
   // TODO: this is not a good function to call for root though as it will do double work, on the other hand, usually not that many quads in root
   if (isContradiction(root, root)) {
     throw new Error('Found a contradiction at root level, stopping execution.');
   }
-  
+
   return change;
 }
 
 export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true | undefined {
   const quads: { positive: Store | undefined; negative: Store | undefined } = { positive: undefined, negative: undefined };
   let clauses: Clause[] | undefined;
-  
+
   // Simplify the child clauses
   const removeClauseIdx = new Set<number>();
   for (const [ idx, child ] of clause.clauses.entries()) {
@@ -68,7 +66,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     if (simplified === undefined) {
       continue;
     }
-    
+
     if (simplified === true) {
       return true;
     } else if (simplified === false) {
@@ -106,13 +104,13 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     clauses = clauses || [ ...clause.clauses ];
     clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
   }
-  
+
   // Check if we have a tautology
   if (isTautology(root, clause)) {
     return true;
   }
-  
-  // Remove duplicate and false triples  
+
+  // Remove duplicate and false triples
   for (const side of [ 'positive', 'negative' ] as const) {
     const clauseQuads = quads[side] ? getQuads(quads[side]!) : getQuads(clause[side]);
     const removeIdx = new Set<number>();
@@ -152,7 +150,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
       quads[side] = new Store(clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx)));
     }
   }
-  
+
   const result = createClause({
     conjunction: false,
     positive: quads.positive ?? clause.positive,
@@ -180,7 +178,7 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
   }
 
   const quads: { positive: Store | undefined; negative: Store | undefined } = { positive: undefined, negative: undefined };
-     
+
   for (const side of [ 'positive', 'negative' ] as const) {
     const clauseQuads = getQuads(clause[side]);
     const removeIdx = new Set<number>();
@@ -218,11 +216,11 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
     positive: quads.positive ?? clause.positive,
     negative: quads.negative ?? clause.negative,
   });
-  
+
   if (result.positive.size === 0 && result.negative.size === 0) {
     return true;
   }
-  
+
   // Putting this after the tautology check in case initial input already has an empty surface
   if (!quads.positive && !quads.negative) {
     return;
@@ -275,7 +273,7 @@ export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
 // TODO: level 1
 //       A || -A
 //       \exists x: f(x) || -(A)
-//       A || -B if either A or -B is known at root 
+//       A || -B if either A or -B is known at root
 export function isTautology(root: RootClause, clause: Clause): boolean {
   for (const positive of clause.positive) {
     for (const negative of clause.negative) {
@@ -292,7 +290,7 @@ export function isTautology(root: RootClause, clause: Clause): boolean {
       }
     }
   }
-  
+
   for (const negative of clause.negative) {
     for (const rootNegative of root.negative) {
       if (impliesQuad(rootNegative, negative, root.quantifiers)) {
@@ -300,7 +298,7 @@ export function isTautology(root: RootClause, clause: Clause): boolean {
       }
     }
   }
-  
+
   return false;
 }
 
@@ -337,7 +335,7 @@ export function isContradiction(root: RootClause, clause: Clause): boolean {
       }
     }
   }
-  
+
   return false;
 }
 
@@ -376,8 +374,8 @@ export function compareTerms(left: Quad, right: Quad, comparator: (termLeft: Ter
       continue;
     }
     return result;
-  }  
-  
+  }
+
   return true;
 }
 

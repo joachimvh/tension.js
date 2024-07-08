@@ -28,7 +28,7 @@ export function createClause(options: Partial<Clause> & { conjunction: boolean }
   }
 }
 
-export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> = new Set(), map: Record<string, BlankNode> = {}): Formula {  
+export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> = new Set(), map: Record<string, BlankNode> = {}): Formula {
   const quads = formula.data.getQuads(null, null, null, null);
   const newQuads: Quad[] = [];
   let changed = false;
@@ -55,11 +55,11 @@ export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> =
       newQuads.push(quad);
     }
   }
-  
+
   if (changed) {
     formula.data = new Store(newQuads);
   }
-  
+
   // Recursively update the surfaces and apply the graffiti
   for (const surface of formula.surfaces) {
     const newMap: Record<string, BlankNode> = {};
@@ -79,7 +79,7 @@ export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> =
     }
     removeDuplicateBlankNodes(surface.formula, names, {...map, ...newMap});
   }
-  
+
   return formula;
 }
 
@@ -95,7 +95,7 @@ export function pullGraffitiUp(formula: Formula): Formula {
 
 export function optimizeSurfaceGraffiti(surface: NegativeSurface): void {
   const childSurfaces = surface.formula.surfaces;
-  
+
   for (const child of childSurfaces) {
     optimizeSurfaceGraffiti(child);
     if (child.graffiti.length === 0) {
@@ -126,7 +126,7 @@ export function surfaceToClause(surface: NegativeSurface, quantifierMap: Record<
   for (const blank of surface.graffiti) {
     quantifierMap[blank.value] = level;
   }
-  
+
   const children = surface.formula.surfaces.map((child): Clause => surfaceToClause(child, quantifierMap, level + 1));
   const negative = new Store();
   const positive = surface.formula.data;
@@ -147,11 +147,11 @@ export function surfaceToClause(surface: NegativeSurface, quantifierMap: Record<
           negative.addQuads(getQuads(child.negative));
         }
       } else {
-        clauses.push(child); 
+        clauses.push(child);
       }
     }
   }
-  
+
   const clause = createClause({
     conjunction: true,
     positive,
@@ -210,8 +210,8 @@ export function negateClause(clause: Clause): Clause {
 }
 
 export function isSameClause(left: Clause, right: Clause): boolean {
-  if (left.conjunction !== right.conjunction || 
-    left.positive.size !== right.positive.size || 
+  if (left.conjunction !== right.conjunction ||
+    left.positive.size !== right.positive.size ||
     left.negative.size !== right.negative.size ||
     left.clauses.length !== right.clauses.length) {
     return false;
@@ -226,7 +226,7 @@ export function isSameClause(left: Clause, right: Clause): boolean {
       return false;
     }
   }
-  
+
   return left.clauses.every((leftClause): boolean => right.clauses.some((rightClause): boolean => isSameClause(leftClause, rightClause)));
 }
 

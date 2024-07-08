@@ -4,7 +4,7 @@ import { applyBindings, findBindings } from './BindUtil';
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
 import { getLogger } from './LogUtil';
 import { applyClauseOverlap, ClauseOverlap, findOverlappingClause } from './OverlapUtil';
-import { stringifyClause } from './ParseUtil';
+import { stringifyClause, stringifyQuad } from './ParseUtil';
 import { simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
 const logger = getLogger('Reason');
@@ -56,7 +56,7 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     logger.debug(`Simplified root to ${stringifyClause(root)}`);
     change = true;
   }
-  
+
   for (const binding of findBindings(root)) {
     let newClauses: Clause[] = [];
     if (bindingCache.some((cached): boolean => isSameBinding(binding, cached))) {
@@ -64,7 +64,6 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     }
     logger.debug(`Applying binding ${inspect(binding)}`);
     bindingCache.push(binding);
-    change = true;
     for (const clause of root.clauses) {
       const bound = applyBindings(clause, binding);
       if (bound){
@@ -84,7 +83,7 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     // Can not wait for next step because of binding cache, alternative would be to not have that cache.
     root.clauses.push(...newClauses);
   }
-  
+
   while (simplifyRoot(root)) {
     logger.debug(`Simplified root to ${stringifyClause(root)}`);
     change = true;
@@ -119,7 +118,7 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     }
   }
   root.clauses.push(...newClauses);
-  
+
   return change;
 }
 

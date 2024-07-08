@@ -39,7 +39,7 @@ function parseFormula(graph: Record<string, unknown>, prefixes: Record<string, s
     throw new Error(`Unexpected formula: ${JSON.stringify(graph)}`);
   }
   const subGraph = Array.isArray(graph['@graph']) ? graph['@graph'] : [ graph['@graph'] ];
-  
+
   const result: Formula = {
     data: new Store(),
     surfaces: [],
@@ -127,7 +127,7 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
   if (subject && predicate) {
     result.push(DF.quad(subject, predicate, newSubject));
   }
-  
+
   // For each field: either it's a new object with an @id, so recurse (unless only field), it's a string, so parse, or could be complex value object
   for (const key of Object.keys(input)) {
     if (key === '@id') {
@@ -176,9 +176,9 @@ function extractAnswerClause(surface: NegativeSurface, level: number): Clause {
   if (surface.formula.surfaces.length > 0) {
     throw new Error('Complex answer surfaces are not supported.');
   }
-  
+
   const positiveLevel = level % 2 === 0;
-  
+
   return createClause({
     conjunction: positiveLevel,
     positive: positiveLevel ? surface.formula.data : new Store(),

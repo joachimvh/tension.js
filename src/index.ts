@@ -33,7 +33,7 @@ import { reason } from './ReasonUtil';
 // f(A) && \forall x: -f(x) || g(x) does not imply \forall g(x), only g(A)!
 //
 // TODO: can one universal actually imply the other universal can be removed?
-//       \forall x, y: f(x) || f(y) || g(x) || h(y) 
+//       \forall x, y: f(x) || f(y) || g(x) || h(y)
 //         -> \forall x, y: f(y) || g(x) || h(y) ???
 //         -> \forall x, y: f(x) || g(x) || h(y) ???
 //         -> both???
@@ -43,18 +43,18 @@ import { reason } from './ReasonUtil';
 // TODO: f(A) || g(A)
 //       \forall x: -f(x) || h(x)
 //       \forall y: -g(y) || h(y)
-//       
-//       
+//
+//
 //       \forall x: (-f(x) || h(x)) && (-g(x) || h(x))
 //       -> \forall x: h(x) || (-f(x) && -g(x))
 //       ...
-//       
-//       
+//
+//
 //       could first see if there is a potential pattern match before applying bindings
 //       -f(A) || h(A) + -g(A) || h(A) (could do this step implicitly)
 //       -> g(A) || h(A) + f(A) || h(A)
 //       -> (combine with results from first line) h(A) || h(A)
-//       
+//
 //       \forall x: f(A, x) || B || g(x)
 //       \forall y: -f(y, C) || D || h(y)
 //       -> \forall z: B || D || g(z) || h(z) (could also keep original quantifiers though, prolly easier)
@@ -63,8 +63,8 @@ import { reason } from './ReasonUtil';
 //
 //       \forall x: f(x) || B || g(x)
 //       \forall y: -f(y) || C || h(y)
-//       -> \forall z: B || C || g(z) || h(z) 
-//       (use new variable to prevent potential issues with future combinations, 
+//       -> \forall z: B || C || g(z) || h(z)
+//       (use new variable to prevent potential issues with future combinations,
 //       on the other hand, won't replace all of them though so not that relevant, need to be the same though)
 //       -> again: is this true though? -> yes, because every value needs at least one of those
 //

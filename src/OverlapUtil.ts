@@ -46,7 +46,7 @@ export function* findOverlappingClause(root: RootClause): IterableIterator<Claus
 //               give (C && D) || B and (B && -B) || C (which is more information than C || B and B || C)
 
 // TODO: level 1
-export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {  
+export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {
   // TODO: if left removeClause and right just quad:
   //       - remove `removeParent` from left clauses
   //       - remove right quad from triples
@@ -57,7 +57,7 @@ export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {
   //       - remove left quad from `removeParent`
   //       - cross product between remaining left `removeParent` members and remaining right clause members
   //       - merge result with rest of left clause
-  
+
   // Both results are the same if both match on a disjunction triple
   let results: Clause[] = [];
   // TODO: we might want to do this after the simplify step though...
@@ -148,8 +148,8 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   // The combined clauses of both sides
   const clauses: Clause[] = [
     ...overlap[side].clause.clauses,
-    ...(overlap[otherSide].removeClause ? 
-      overlap[otherSide].clause.clauses.filter((child): boolean => child !== overlap[otherSide].removeClause) : 
+    ...(overlap[otherSide].removeClause ?
+      overlap[otherSide].clause.clauses.filter((child): boolean => child !== overlap[otherSide].removeClause) :
       overlap[otherSide].clause.clauses),
   ];
 
@@ -177,7 +177,7 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
       result.positive.removeQuad(quad);
     }
   }
-  
+
   return result;
 }
 
@@ -231,7 +231,7 @@ export function findQuadOverlap(left: { clause: Clause; value: Clause | Quad }, 
     }
     return;
   }
-  
+
   // Left is a quad
   if (isClause(right.value)) {
     for (const rightQuad of right.value[ leftPositive ? 'negative' : 'positive' ]) {

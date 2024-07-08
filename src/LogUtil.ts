@@ -33,8 +33,8 @@ export function getLogger(label: string): Logger {
     ),
     transports: [ new transports.Console() ],
   });
-  
+
   loggers.push(logger);
-  
+
   return logger;
 }
