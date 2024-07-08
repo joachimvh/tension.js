@@ -1,6 +1,6 @@
 import { BlankNode, NamedNode, Quad } from '@rdfjs/types';
 import { DataFactory, Store } from 'n3';
-import { Formula, NegativeSurface, QUAD_POSITIONS, stringifyClause } from './ParseUtil';
+import { Formula, NegativeSurface, QUAD_POSITIONS } from './ParseUtil';
 
 
 export type Clause = {
@@ -230,29 +230,55 @@ export function isSameClause(left: Clause, right: Clause): boolean {
   return left.clauses.every((leftClause): boolean => right.clauses.some((rightClause): boolean => isSameClause(leftClause, rightClause)));
 }
 
-export function isDisjunctionSubset(left: Clause, right: Clause): boolean {
-  // TODO: this function is currently sort of assuming this is a disjunction, should be more explicit.
-  if (left.conjunction !== right.conjunction) {
-    return false;
-  }
+export function isDisjunctionSubset(left: Clause, right: Clause, quantifiers: Record<string, number>, blankMap: Record<string, string> = {}): boolean {
   // Although you could see f(A) as being a subset of ∀x: f(x),
   // we still need f(A) to make our reasoning steps work,
   // which is why we only check equality here.
-  // TODO: check for situations where having different universals in the same spot results in the same clause
-  //       might also be relevant to check where quads of one are part of the clause of another
   for (const side of [ 'positive', 'negative' ] as const) {
+    // For each left quad, check if we can find at least one matching right quad
     for (const leftQuad of left[side]) {
-      if (!right[side].has(leftQuad)) {
+      let match = false;
+      for (const rightQuad of right[side]) {
+        // TODO: params get switched in recursive call but need to make sure blankMap is still used correctly
+        match = quadEqualsUniversal(left.conjunction ? leftQuad : rightQuad, left.conjunction ? rightQuad : leftQuad, quantifiers, blankMap);
+        if (match) {
+          break;
+        }
+      }
+      if (!match) {
         return false;
       }
     }
   }
   for (const leftClause of left.clauses) {
-    // Note that we use `isSameClause` here.
-    if (!right.clauses.some((rightClause): boolean => isSameClause(leftClause, rightClause))) {
+    // TODO: notice the swapped order!
+    if (!right.clauses.some((rightClause): boolean => isDisjunctionSubset(rightClause, leftClause, quantifiers, blankMap))) {
       return false;
     }
   }
+  return true;
+}
+
+// TODO: checks equality but also allows different blank nodes in the same position if there is a valid mapping.
+export function quadEqualsUniversal(left: Quad, right: Quad, quantifiers: Record<string, number>, blankMap: Record<string, string>): boolean {
+  const newBlankMap = { ...blankMap };
+  for (const pos of QUAD_POSITIONS) {
+    const leftTerm = left[pos];
+    const rightTerm = right[pos];
+    if (leftTerm.termType === 'BlankNode' && rightTerm.termType === 'BlankNode') {
+      if (quantifiers[leftTerm.value] !== quantifiers[rightTerm.value]) {
+        return false;
+      }
+      if (newBlankMap[leftTerm.value] && newBlankMap[leftTerm.value] !== rightTerm.value) {
+        return false;
+      }
+      newBlankMap[leftTerm.value] = rightTerm.value;
+    } else if (!leftTerm.equals(rightTerm)) {
+      return false;
+    }
+  }
+  // Only updating blankMap here as partial results above could have added info before noticing there was no match
+  Object.assign(blankMap, newBlankMap);
   return true;
 }
 
