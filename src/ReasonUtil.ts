@@ -1,7 +1,7 @@
 import { Quad, Term } from '@rdfjs/types';
 import { inspect } from 'node:util';
 import { applyBindings, findBindings } from './BindUtil';
-import { Clause, isDisjunctionSubset, isSameClause, RootClause } from './ClauseUtil';
+import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
 import { getLogger } from './LogUtil';
 import { applyClauseOverlap, ClauseOverlap, findOverlappingClause } from './OverlapUtil';
 import { stringifyClause } from './ParseUtil';
@@ -72,7 +72,8 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
         if (simplified === true) {
           continue;
         }
-        if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified)) || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified))) {
+        if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers)) 
+          || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
           continue;
         }
         logger.debug(`Storing new bound clause: ${stringifyClause(simplified)}`);
@@ -96,12 +97,20 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     }
     overlapCache.push(overlap);
     const overlapClauses = applyClauseOverlap(overlap);
+    const leftCount = countQuads(overlap.left.clause);
+    const rightCount = countQuads(overlap.right.clause);
     for (const clause of overlapClauses) {
       const simplified = simplifyLevel1(root, clause) ?? clause;
       if (simplified === true) {
         continue;
       }
-      if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified)) || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified))) {
+      // TODO: want to do this after simplifying
+      const overlapCount = countQuads(simplified);
+      if (leftCount + rightCount < overlapCount) {
+        continue;
+      }
+      if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))
+        || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
         continue;
       }
       logger.debug(`Storing new overlap clause: ${stringifyClause(simplified)}`);
@@ -140,4 +149,8 @@ export function isSameOverlap(left: ClauseOverlap, right: ClauseOverlap): boolea
     left.left.remove.equals(right.left.remove) &&
     left.right.clause === right.right.clause &&
     right.right.remove.equals(right.right.remove);
+}
+
+export function countQuads(clause: Clause): number {
+  return clause.positive.size + clause.negative.size + clause.clauses.map(countQuads).reduce((sum, val): number => sum + val, 0);
 }
