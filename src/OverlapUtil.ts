@@ -42,6 +42,8 @@ export function* findOverlappingClause(root: RootClause): IterableIterator<Claus
 //       -> D || (g(B) && B && E && F) || (C && E && F) || G
 //       ALSO: -> ((D || G) && A) || (g(B) && B) || C
 //             -> (D && A) || (G && A) || (g(B) && B) || C
+//       simpler example: (A && D) || B and (-A && -B) || C
+//               give (C && D) || B and (B && -B) || C (which is more information than C || B and B || C)
 
 // TODO: level 1
 export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {  
@@ -57,29 +59,29 @@ export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {
   //       - merge result with rest of left clause
   
   // Both results are the same if both match on a disjunction triple
-  let result: Clause[] = [];
-  if (!overlap.left.removeClause && !overlap.right.removeClause) {
-    result = [ applyPartialClauseOverlap(overlap, true) ];
+  let results: Clause[] = [];
+  // TODO: we might want to do this after the simplify step though...
+  if (overlap.left.removeClause || overlap.right.removeClause) {
+    if (overlap.left.removeClause && overlap.right.removeClause) {
+      results.push(applySubClauseOverlap(overlap, true), applySubClauseOverlap(overlap, false));
+    } else {
+      // TODO: still only need to generate one here, as the other one would be a simplified version
+      //       e.g., A || B || C and (-A && D && E) || F || G
+      //             generates B || C || F || G and (B && D && E) || (C && D && E) || F || G
+      //             the latter one contains all the information of the first
+      results.push(overlap.left.removeClause ? applySubClauseOverlap(overlap, true) : applySubClauseOverlap(overlap, false));
+    }
   } else {
-    result = [applyPartialClauseOverlap(overlap, true), applyPartialClauseOverlap(overlap, false)];
+    results.push(applyTripleClauseOverlap(overlap, true));
   }
-  for (const clause of result) {
+  for (const clause of results) {
     logger.debug(`generated ${stringifyClause(clause)} from ${stringifyClause(overlap.left.clause)} and ${stringifyClause(overlap.right.clause)}`);
   }
-  return result;
-}
-
-// Determines the overlap by inserting into 1 side
-export function applyPartialClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
-  if (overlap[left ? 'left' : 'right'].removeClause) {
-    return applySubClauseOverlap(overlap, left);
-  } else {
-    return applyTripleClauseOverlap(overlap, left);
-  }
+  return results;
 }
 
 // TODO: assumes removeClause in the relevant side has a value
-function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
+export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
   const side = left ? 'left' : 'right';
   const otherSide = left ? 'right' : 'left';
   const removeClause = overlap[side].removeClause;
@@ -165,6 +167,7 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   // TODO: doing this after merge might be bad I think, need to find example though
   // TODO: it's possible that the removeClause contains even more information about things that can be removed
   //       e.g., A || B and (-A && -B) || C. Standard solution would be to generate B || C, but actually this can be simplified to C
+  //       what about (A && D) || B? -> same thing, result is still C
   const removeClause = overlap[otherSide].removeClause;
   if (removeClause) {
     for (const quad of applyBindingsToStore(removeClause.positive, overlap.binding) ?? removeClause.positive) {
