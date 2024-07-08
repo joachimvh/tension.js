@@ -24,21 +24,11 @@ export function simplifyRoot(root: RootClause): boolean {
 
     if (simplified === true) {
       removeClauseIdx.add(idx);
-    } else {
-      // These steps could also happen if the clause was not simplified.
-      // For example if the clause was newly generated in a previous step.
-      const clause = simplified ?? child;
-      root.clauses[idx] = clause;
-      // Remove single triple clauses and put them directly into relevant store
-      const simplifiedQuads = clauseToTriples(clause);
-      if (simplifiedQuads) {
-        removeClauseIdx.add(idx);
-        change = true;
-        for (const { quad, positive } of simplifiedQuads) {
-          logger.info(`Deduced ${stringifyQuad(quad, !positive)}`);
-          root[positive ? 'positive' : 'negative'].addQuad(quad);
-        }
-      }
+    } else if (simplified?.conjunction) {
+      removeClauseIdx.add(idx);
+      handleConjunctionResult(root, simplified, child);
+    } else if (simplified) {
+      root.clauses[idx] = simplified;
     }
   }
   if (removeClauseIdx.size > 0) {
@@ -53,6 +43,17 @@ export function simplifyRoot(root: RootClause): boolean {
   }
 
   return change;
+}
+
+// Adds the triples of a conjunction directly to the root.
+// Original value is used for debug logs
+export function handleConjunctionResult(root: RootClause, conjunction: Clause, original: Clause): void {
+  for (const side of [ 'positive', 'negative' ] as const) {
+    for (const quad of conjunction[side]) {
+      logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')} from ${stringifyClause(original)}`);
+      root[side].addQuad(quad);
+    }
+  }
 }
 
 export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true | undefined {
@@ -75,14 +76,11 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
       clauses = clauses || [ ...clause.clauses ];
       clauses[idx] = simplified;
       // Remove single triple clauses and put them directly into relevant store
-      const simplifiedQuads = clauseToTriples(clause);
-      if (simplifiedQuads) {
+      if (simplified.positive.size + simplified.negative.size === 1) {
         removeClauseIdx.add(idx);
-        for (const { quad, positive } of simplifiedQuads) {
-          const quadStr = positive ? 'positive' : 'negative';
-          quads[quadStr] = quads[quadStr] || mergeData(clause.positive);
-          quads[quadStr]!.addQuad(quad);
-        }
+        const side = simplified.positive.size === 1 ? 'positive' : 'negative';
+        quads[side] = quads[side] || mergeData(clause[side]);
+        quads[side]!.addQuad(getQuads(simplified[side])[0]);
       }
     }
   }
@@ -161,6 +159,11 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
   // We have removed all false values, so nothing true is left
   if (result.clauses.length === 0 && result.positive.size === 0 && result.negative.size === 0) {
     throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${stringifyClause(clause)}`);
+  }
+
+  const simplifiedQuads = clauseToTriples(clause);
+  if (simplifiedQuads) {
+    return simplifiedQuads;
   }
 
   // Putting this after the contradiction check in case initial input already has an empty surface
@@ -339,30 +342,19 @@ export function isContradiction(root: RootClause, clause: Clause): boolean {
   return false;
 }
 
-export type ClauseToTripleResult = { quad: Quad, positive: boolean };
-
-export function clauseToTriples(clause: Clause): ClauseToTripleResult[] | undefined {
+// Returns a conjunction if there is a valid result
+export function clauseToTriples(clause: Clause): Clause | undefined {
   if (clause.conjunction) {
-    const result: ClauseToTripleResult[] = [];
-    for (const quad of clause.positive) {
-      result.push({ quad, positive: true });
-    }
-    for (const quad of clause.negative) {
-      result.push({ quad, positive: false });
-    }
-    return result;
+    return clause;
   }
   // Let's just assume we don't have empty clauses here
   if (clause.positive.size + clause.negative.size + clause.clauses.length > 1) {
     return;
   }
-  if (clause.positive.size === 1) {
-    return getQuads(clause.positive).map((quad): ClauseToTripleResult => ({ quad, positive: true}));
+  if (clause.positive.size === 1 || clause.negative.size === 1) {
+    return { ...clause, conjunction: true };
   }
-  if (clause.negative.size === 1) {
-    return getQuads(clause.negative).map((quad): ClauseToTripleResult => ({ quad, positive: false}));
-  }
-  return clauseToTriples(clause.clauses[0]);
+  return clause.clauses[0];
 }
 
 export function compareTerms(left: Quad, right: Quad, comparator: (termLeft: Term, termRight: Term) => boolean | undefined): boolean {

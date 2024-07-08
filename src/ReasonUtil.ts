@@ -4,8 +4,8 @@ import { applyBindings, findBindings } from './BindUtil';
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
 import { getLogger } from './LogUtil';
 import { applyClauseOverlap, ClauseOverlap, findOverlappingClause } from './OverlapUtil';
-import { stringifyClause, stringifyQuad } from './ParseUtil';
-import { simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
+import { stringifyClause } from './ParseUtil';
+import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
 const logger = getLogger('Reason');
 
@@ -66,17 +66,8 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     bindingCache.push(binding);
     for (const clause of root.clauses) {
       const bound = applyBindings(clause, binding);
-      if (bound){
-        const simplified = simplifyLevel1(root, bound) ?? bound;
-        if (simplified === true) {
-          continue;
-        }
-        if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers)) 
-          || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
-          continue;
-        }
-        logger.debug(`Storing new bound clause: ${stringifyClause(simplified)}`);
-        newClauses.push(simplified);
+      if (bound) {
+        change = handleNewClause(root, bound, newClauses) || change;
       }
     }
     // Pushing every iteration here so next bindings are applied to results generated here.
@@ -99,27 +90,35 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     const leftCount = countQuads(overlap.left.clause);
     const rightCount = countQuads(overlap.right.clause);
     for (const clause of overlapClauses) {
-      const simplified = simplifyLevel1(root, clause) ?? clause;
-      if (simplified === true) {
-        continue;
-      }
-      // TODO: want to do this after simplifying
-      const overlapCount = countQuads(simplified);
-      if (leftCount + rightCount < overlapCount) {
-        continue;
-      }
-      if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))
-        || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
-        continue;
-      }
-      logger.debug(`Storing new overlap clause: ${stringifyClause(simplified)}`);
-      newClauses.push(simplified);
-      change = true;
+      // Note that I spent an hour debugging why this didn't work because I first had `change = change || handleNewClause...`
+      change = handleNewClause(root, clause, newClauses, (simplified): boolean => leftCount + rightCount > countQuads(simplified)) || change;
     }
   }
   root.clauses.push(...newClauses);
 
   return change;
+}
+
+export function handleNewClause(root: RootClause, clause: Clause, newClauses: Clause[], additionalCheck?: (simplified: Clause) => boolean): boolean {
+  const simplified = simplifyLevel1(root, clause) ?? clause;
+  if (simplified === true) {
+    return false;
+  }
+  if (simplified.conjunction) {
+    handleConjunctionResult(root, simplified, clause);
+    return true;
+  }
+  if (additionalCheck && !additionalCheck(simplified)) {
+    return false;
+  }
+
+  if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))
+    || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
+    return false;
+  }
+  logger.debug(`Storing new clause: ${stringifyClause(simplified)}`);
+  newClauses.push(simplified);
+  return true;
 }
 
 export function isSameBinding(left: Record<string, Term>, right: Record<string, Term>): boolean {
