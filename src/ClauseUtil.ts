@@ -215,7 +215,7 @@ export function findAnswerClauses(formula: Formula, level = 0): Clause[] {
   for (const surface of formula.surfaces) {
     if (surface.answer) {
       let clause = surfaceToClause(surface, {});
-      if (level % 2 === 1) {
+      if (level % 2 === 0) {
         clause = negateClause(clause);
       }
       result.push(clause);
