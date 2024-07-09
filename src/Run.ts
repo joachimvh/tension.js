@@ -1,9 +1,9 @@
 import { Command, Option } from 'commander';
 import { readFileSync } from 'fs';
 import { inspect } from 'node:util';
-import { pullGraffitiUp, removeDuplicateBlankNodes, toClause } from './ClauseUtil';
+import { findAnswerClauses, pullGraffitiUp, removeDuplicateBlankNodes, toClause } from './ClauseUtil';
 import { getLogger, LOG_LEVELS, setLogLevel } from './LogUtil';
-import { findAnswerClause, parseRoot, stringifyClause } from './ParseUtil';
+import { parseRoot, stringifyClause } from './ParseUtil';
 import { reason } from './ReasonUtil';
 
 const logger = getLogger('Run');
@@ -18,7 +18,7 @@ export async function run(args: string[]): Promise<void> {
 
   program
     .option('-s, --steps <number>', 'max amount of steps', '5')
-    .option('-a, --answer', 'stop when answer surface is fulfilled')
+    .option('--ignoreAnswer', 'does not stop when an answer surface is resolved')
     .option('-f,--file <string>', 'file to read from')
     .option('-t,--timer', 'runs a timer')
     .addOption(new Option('-l, --logLevel <level>', 'logger level, currently using info/debug').choices(LOG_LEVELS).default('info'));
@@ -55,11 +55,11 @@ export async function run(args: string[]): Promise<void> {
   const formula = pullGraffitiUp(removeDuplicateBlankNodes(parsed));
   const root = toClause(formula);
 
-  let answerClause = opts.answer ? findAnswerClause(formula) : undefined;
+  let answerClauses = opts.ignoreAnswer ? [] : findAnswerClauses(formula);
 
   logger.debug(`Quantifier levels: ${inspect(root.quantifiers)}`);
   logger.debug(`Starting clause: ${stringifyClause(root)}`);
-  reason(root, answerClause, maxSteps);
+  reason(root, answerClauses, maxSteps);
 
   if (opts.timer) {
     console.timeEnd('timer');

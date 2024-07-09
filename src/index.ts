@@ -1,11 +1,3 @@
-import { readFileSync } from 'fs';
-import { inspect } from 'node:util';
-import { pullGraffitiUp, removeDuplicateBlankNodes, toClause } from './ClauseUtil';
-import { run } from './Run';
-import { getLogger, setLogLevel } from './LogUtil';
-import { findAnswerClause, parseRoot, stringifyClause } from './ParseUtil';
-import { reason } from './ReasonUtil';
-
 // TODO: look into ((f(A) || g(A)) && \exists x: (f(x) || g(x)) => TEST)
 
 // TODO: random notes, should perhaps keep these to prevent making the same mistakes

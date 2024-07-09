@@ -2,7 +2,7 @@ import { BlankNode, NamedNode, Quad, Term } from '@rdfjs/types';
 import { DataFactory, Store } from 'n3';
 import { N3Parser } from 'n3-parser.js';
 import { quadToStringQuad } from 'rdf-string';
-import { Clause, createClause } from './ClauseUtil';
+import { Clause } from './ClauseUtil';
 
 const DF = DataFactory;
 
@@ -156,34 +156,6 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
   }
 
   return result;
-}
-
-// Interpret the results of an answer clause as a clause that needs to be fulfilled
-// TODO: assuming only 1 answer surface
-export function findAnswerClause(formula: Formula, level = 0): Clause {
-  for (const surface of formula.surfaces) {
-    if (surface.answer) {
-      return extractAnswerClause(surface, level);
-    }
-    try {
-      return findAnswerClause(surface.formula);
-    } catch {}
-  }
-  throw new Error(`Could not find an answer surface.`);
-}
-
-function extractAnswerClause(surface: NegativeSurface, level: number): Clause {
-  if (surface.formula.surfaces.length > 0) {
-    throw new Error('Complex answer surfaces are not supported.');
-  }
-
-  const positiveLevel = level % 2 === 0;
-
-  return createClause({
-    conjunction: positiveLevel,
-    positive: positiveLevel ? surface.formula.data : new Store(),
-    negative: positiveLevel ? new Store() : surface.formula.data,
-  });
 }
 
 export function toSimpleFormula(formula: Formula): Record<keyof Formula, unknown> {

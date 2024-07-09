@@ -209,6 +209,22 @@ export function negateClause(clause: Clause): Clause {
   });
 }
 
+// Interpret the results of an answer clause as a clause that needs to be fulfilled
+export function findAnswerClauses(formula: Formula, level = 0): Clause[] {
+  const result: Clause[] = [];
+  for (const surface of formula.surfaces) {
+    if (surface.answer) {
+      let clause = surfaceToClause(surface, {});
+      if (level % 2 === 1) {
+        clause = negateClause(clause);
+      }
+      result.push(clause);
+    }
+    result.push(...findAnswerClauses(surface.formula));
+  }
+  return result;
+}
+
 export function isSameClause(left: Clause, right: Clause): boolean {
   if (left.conjunction !== right.conjunction ||
     left.positive.size !== right.positive.size ||

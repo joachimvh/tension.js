@@ -1,4 +1,4 @@
-import { Quad, Term } from '@rdfjs/types';
+import { Term } from '@rdfjs/types';
 import { inspect } from 'node:util';
 import { applyBindings, findBindings } from './BindUtil';
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
@@ -9,52 +9,27 @@ import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot }
 
 const logger = getLogger('Reason');
 
-export enum ReasonResultType {
-  PositiveTriple,
-  NegativeTriple,
-  Clause,
-}
-
-export type PositiveTripleResult = {
-  type: ReasonResultType.PositiveTriple,
-  value: Quad,
-};
-
-export type NegativeTripleResult = {
-  type: ReasonResultType.NegativeTriple,
-  value: Quad,
-};
-
-export type ClauseResult = {
-  type: ReasonResultType.Clause,
-  value: Clause,
-};
-
-export type ReasonResult = PositiveTripleResult | NegativeTripleResult | ClauseResult;
-
-export function reason(root: RootClause, answerClause?: Clause, maxSteps = 5): void {
+export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
   const bindingCache: Record<string, Term>[] = [];
   const overlapCache: ClauseOverlap[] = [];
   let count = 0;
-  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, bindingCache, overlapCache)) {
+
+  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, answerClauses, bindingCache, overlapCache)) {
     ++count;
     logger.debug(`COMPLETED STEP ${count}`);
-    if (answerClause) {
-      let simplified = answerClause.conjunction ? simplifyLevel2(root, answerClause) : simplifyLevel1(root, answerClause);
-      if (simplified === true) {
-        logger.debug('Stopping as answer has been reached.');
-        break;
-      }
-    }
   }
   logger.debug('FINISHED');
 }
 
-export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[], overlapCache: ClauseOverlap[]): boolean {
+export function reasonStep(root: RootClause, answerClauses: Clause[], bindingCache: Record<string, Term>[], overlapCache: ClauseOverlap[]): boolean {
   let change = false;
   while (simplifyRoot(root)) {
     logger.debug(`Simplified root to ${stringifyClause(root)}`);
     change = true;
+  }
+  if (isAnswered(root, answerClauses)) {
+    logger.debug('Stopping as answer has been reached.');
+    return false;
   }
 
   for (const binding of findBindings(root)) {
@@ -79,6 +54,10 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
     logger.debug(`Simplified root to ${stringifyClause(root)}`);
     change = true;
   }
+  if (isAnswered(root, answerClauses)) {
+    logger.debug('Stopping as answer has been reached.');
+    return false;
+  }
 
   let newClauses: Clause[] = [];
   for (const overlap of findOverlappingClause(root)) {
@@ -97,6 +76,17 @@ export function reasonStep(root: RootClause, bindingCache: Record<string, Term>[
   root.clauses.push(...newClauses);
 
   return change;
+}
+
+// TODO: this does not yet support more complex answer clauses where we need to check bindings
+export function isAnswered(root: RootClause, answerClauses: Clause[]): boolean {
+  for (const clause of answerClauses) {
+    const result = clause.conjunction ? simplifyLevel2(root, clause) : simplifyLevel1(root, clause);
+    if (result === true) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function handleNewClause(root: RootClause, clause: Clause, newClauses: Clause[], additionalCheck?: (simplified: Clause) => boolean): boolean {
