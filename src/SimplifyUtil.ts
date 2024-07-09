@@ -388,10 +388,10 @@ export function conjunctionContradiction(positive: Quad, negative: Quad, quantif
 
 export function disjunctionTautology(positive: Quad, negative: Quad, quantifiers: Record<string, number>): boolean {
   return compareTerms(positive, negative, (termLeft, termRight) => {
-    if (isExistential(termLeft, quantifiers)) {
+    if (isExistential(termLeft, quantifiers) && !isUniversal(termRight, quantifiers)) {
       return;
     }
-    if (isExistential(termRight, quantifiers)) {
+    if (isExistential(termRight, quantifiers) && !isUniversal(termLeft, quantifiers)) {
       return;
     }
     if (!termLeft.equals(termRight)) {
