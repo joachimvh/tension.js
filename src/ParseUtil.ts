@@ -1,13 +1,13 @@
-import { BlankNode, NamedNode, Quad, Term } from '@rdfjs/types';
+import { BlankNode, NamedNode, Quad, Quad_Object, Quad_Predicate, Quad_Subject, Term } from '@rdfjs/types';
 import { DataFactory, Store } from 'n3';
 import { N3Parser } from 'n3-parser.js';
-import { quadToStringQuad } from 'rdf-string';
+import { quadToStringQuad, stringToTerm } from 'rdf-string';
 import { Clause } from './ClauseUtil';
 
 const DF = DataFactory;
 
 export type Formula = {
-  data: Store;
+  data: Quad[];
   surfaces: NegativeSurface[];
 }
 
@@ -41,13 +41,13 @@ function parseFormula(graph: Record<string, unknown>, prefixes: Record<string, s
   const subGraph = Array.isArray(graph['@graph']) ? graph['@graph'] : [ graph['@graph'] ];
 
   const result: Formula = {
-    data: new Store(),
+    data: [],
     surfaces: [],
   }
   for (const entry of subGraph) {
     const parsed = parseEntry(entry, prefixes);
     if (Array.isArray(parsed)) {
-      result.data.addQuads(parsed);
+      result.data.push(...parsed);
     } else {
       result.surfaces.push(parsed);
     }
@@ -112,7 +112,8 @@ function parseGraffiti(graffiti: object[]): BlankNode[] {
   return result;
 }
 
-function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], prefixes: Record<string, string>, subject?: NamedNode | BlankNode, predicate?: NamedNode): Quad[] {
+function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], prefixes: Record<string, string>,
+  subject?: Quad_Subject | BlankNode, predicate?: Quad_Predicate): Quad[] {
   if (Array.isArray(input)) {
     return input.flatMap((child): Quad[] => parseQuads(child, prefixes, subject, predicate));
   }
@@ -142,16 +143,16 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
         continue;
       }
       if (Array.isArray(val)) {
-        result.push(...val.map((child): Quad => DF.quad(newSubject, RDF_TYPE, DF.namedNode(child))))
+        result.push(...val.map((child): Quad => DF.quad(newSubject, RDF_TYPE, stringToTerm(child) as Quad_Object)))
       } else {
-        result.push(DF.quad(newSubject, RDF_TYPE, DF.namedNode(val as string)));
+        result.push(DF.quad(newSubject, RDF_TYPE, stringToTerm(val as string) as Quad_Object));
       }
     } else if (typeof val === 'string' || typeof val === 'number') {
-      result.push(DF.quad(newSubject, DF.namedNode(key), DF.literal(val)));
+      result.push(DF.quad(newSubject, stringToTerm(key) as Quad_Predicate, DF.literal(val)));
     } else if (typeof val === 'boolean') {
-      result.push(DF.quad(newSubject, DF.namedNode(key), DF.literal(`${val}`, DF.namedNode('http://www.w3.org/2001/XMLSchema#boolean'))));
+      result.push(DF.quad(newSubject, stringToTerm(key) as Quad_Predicate, DF.literal(`${val}`, DF.namedNode('http://www.w3.org/2001/XMLSchema#boolean'))));
     } else {
-      result.push(...parseQuads(val as Record<string, unknown>, prefixes, newSubject, DF.namedNode(key)));
+      result.push(...parseQuads(val as Record<string, unknown>, prefixes, newSubject, stringToTerm(key) as Quad_Predicate));
     }
   }
 
@@ -159,7 +160,7 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
 }
 
 export function toSimpleFormula(formula: Formula): Record<keyof Formula, unknown> {
-  const data = formula.data.getQuads(null, null, null, null).map(quadToStringQuad);
+  const data = formula.data.map(quadToStringQuad);
   const surfaces = formula.surfaces.map(toSimpleSurface);
   return { data, surfaces };
 }

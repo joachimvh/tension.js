@@ -140,5 +140,5 @@ export function isSameOverlap(left: ClauseOverlap, right: ClauseOverlap): boolea
 }
 
 export function countQuads(clause: Clause): number {
-  return clause.positive.size + clause.negative.size + clause.clauses.map(countQuads).reduce((sum, val): number => sum + val, 0);
+  return clause.positive.length + clause.negative.length + clause.clauses.map(countQuads).reduce((sum, val): number => sum + val, 0);
 }

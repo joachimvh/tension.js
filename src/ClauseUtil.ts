@@ -5,8 +5,8 @@ import { Formula, NegativeSurface, QUAD_POSITIONS } from './ParseUtil';
 
 export type Clause = {
   conjunction: boolean;
-  positive: Store;
-  negative: Store;
+  positive: Quad[];
+  negative: Quad[];
   clauses: Clause[];
 }
 
@@ -22,17 +22,16 @@ export function createClause(options: Partial<Clause> & { conjunction: boolean }
   return {
     ...options,
     conjunction: options.conjunction,
-    positive: options.positive ?? new Store(),
-    negative: options.negative ?? new Store(),
+    positive: options.positive ?? [],
+    negative: options.negative ?? [],
     clauses: options.clauses ?? [],
   }
 }
 
 export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> = new Set(), map: Record<string, BlankNode> = {}): Formula {
-  const quads = formula.data.getQuads(null, null, null, null);
   const newQuads: Quad[] = [];
   let changed = false;
-  for (const quad of quads) {
+  for (const quad of formula.data) {
     let changedQuad = false;
     let newPos: Partial<Quad> = {};
     for (const pos of QUAD_POSITIONS) {
@@ -57,7 +56,7 @@ export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> =
   }
 
   if (changed) {
-    formula.data = new Store(newQuads);
+    formula.data = newQuads;
   }
 
   // Recursively update the surfaces and apply the graffiti
@@ -128,23 +127,23 @@ export function surfaceToClause(surface: NegativeSurface, quantifierMap: Record<
   }
 
   const children = surface.formula.surfaces.map((child): Clause => surfaceToClause(child, quantifierMap, level + 1));
-  const negative = new Store();
+  const negative: Quad[] = [];
   const positive = surface.formula.data;
   const conjs = children.filter((clause): boolean => clause.conjunction);
   const disjs = children.filter((clause): boolean => !clause.conjunction);
   for (const conj of conjs) {
-    positive.addQuads(getQuads(conj.positive));
-    negative.addQuads(getQuads(conj.negative));
+    positive.push(...conj.positive);
+    negative.push(...conj.negative);
     disjs.push(...conj.clauses);
   }
   const clauses: Clause[] = [];
   for (const disj of disjs) {
     for (const child of flattenClause(disj)) {
-      if (child.clauses.length === 0 && child.positive.size + child.negative.size === 1) {
-        if (child.positive.size === 1) {
-          positive.addQuads(getQuads(child.positive));
+      if (child.clauses.length === 0 && child.positive.length + child.negative.length === 1) {
+        if (child.positive.length === 1) {
+          positive.push(...child.positive);
         } else {
-          negative.addQuads(getQuads(child.negative));
+          negative.push(...child.negative);
         }
       } else {
         clauses.push(child);
@@ -168,15 +167,15 @@ export function* flattenClause(clause: Clause): IterableIterator<LeafClause> {
     return;
   }
   const crossProduct = crossProductClauses(clause.clauses as LeafClause[], clause.conjunction);
-  if (clause.positive.size === 0 && clause.negative.size === 0) {
+  if (clause.positive.length === 0 && clause.negative.length === 0) {
     yield* crossProduct;
   }
   for (const product of crossProduct) {
     // Combine every product with the remaining triples that were already there
     yield createClause({
       conjunction: product.conjunction,
-      positive: clause.positive.size === 0 ? product.positive : mergeData(product.positive, clause.positive),
-      negative: clause.negative.size === 0 ? product.negative : mergeData(product.negative, clause.negative),
+      positive: clause.positive.length === 0 ? product.positive : mergeData(product.positive, clause.positive),
+      negative: clause.negative.length === 0 ? product.negative : mergeData(product.negative, clause.negative),
     }) as LeafClause;
   }
 }
@@ -189,7 +188,7 @@ export function* crossProductClauses(clauses: LeafClause[], conjunction: boolean
   const clause = clauses.pop()!;
   for (const product of crossProductClauses(clauses, conjunction)) {
     for (const side of [ 'positive', 'negative' ] as const) {
-      for (const quad of getQuads(clause[side])) {
+      for (const quad of clause[side]) {
         yield createClause({
           conjunction: product.conjunction,
           positive: side === 'positive' ? mergeData(product.positive, quad) : product.positive,
@@ -227,18 +226,18 @@ export function findAnswerClauses(formula: Formula, level = 0): Clause[] {
 
 export function isSameClause(left: Clause, right: Clause): boolean {
   if (left.conjunction !== right.conjunction ||
-    left.positive.size !== right.positive.size ||
-    left.negative.size !== right.negative.size ||
+    left.positive.length !== right.positive.length ||
+    left.negative.length !== right.negative.length ||
     left.clauses.length !== right.clauses.length) {
     return false;
   }
   for (const leftQuad of left.positive) {
-    if (!right.positive.has(leftQuad)) {
+    if (!right.positive.some((quad): boolean => quad.equals(leftQuad))) {
       return false;
     }
   }
   for (const leftQuad of left.negative) {
-    if (!right.negative.has(leftQuad)) {
+    if (!right.negative.some((quad): boolean => quad.equals(leftQuad))) {
       return false;
     }
   }
@@ -302,16 +301,17 @@ export function getQuads(store: Store): Quad[] {
   return store.getQuads(null, null, null, null);
 }
 
-export function mergeData(...args: (Store | Quad[] | Quad)[]): Store {
-  const store = new Store();
+// TODO: nog longer checking uniqueness
+export function mergeData(...args: (Store | Quad[] | Quad)[]): Quad[] {
+  const result: Quad[] = [];
   for (const arg of args) {
     if (Array.isArray(arg)) {
-      store.addQuads(arg);
+      result.push(...arg);
     } else if ('subject' in arg) {
-      store.add(arg);
+      result.push(arg);
     } else {
-      store.addQuads(getQuads(arg));
+      result.push(...getQuads(arg));
     }
   }
-  return store;
+  return result;
 }
