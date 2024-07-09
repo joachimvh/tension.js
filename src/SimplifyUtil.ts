@@ -1,5 +1,4 @@
 import { BlankNode, Quad, Term } from '@rdfjs/types';
-import { Store } from 'n3';
 import { Clause, createClause, getQuads, mergeData, RootClause } from './ClauseUtil';
 import { getLogger } from './LogUtil';
 import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
@@ -50,13 +49,13 @@ export function handleConjunctionResult(root: RootClause, conjunction: Clause): 
   for (const side of [ 'positive', 'negative' ] as const) {
     for (const quad of conjunction[side]) {
       logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
-      root[side].addQuad(quad);
+      root[side].push(quad);
     }
   }
 }
 
 export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true | undefined {
-  const quads: { positive: Store | undefined; negative: Store | undefined } = { positive: undefined, negative: undefined };
+  const quads: Partial<Pick<Clause, 'positive' | 'negative'>> = { positive: undefined, negative: undefined };
   let clauses: Clause[] | undefined;
 
   // Simplify the child clauses
@@ -75,11 +74,11 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
       clauses = clauses || [ ...clause.clauses ];
       clauses[idx] = simplified;
       // Remove single triple clauses and put them directly into relevant store
-      if (simplified.positive.size + simplified.negative.size === 1) {
+      if (simplified.positive.length + simplified.negative.length === 1) {
         removeClauseIdx.add(idx);
-        const side = simplified.positive.size === 1 ? 'positive' : 'negative';
+        const side = simplified.positive.length === 1 ? 'positive' : 'negative';
         quads[side] = quads[side] || mergeData(clause[side]);
-        quads[side]!.addQuad(getQuads(simplified[side])[0]);
+        quads[side]!.push(simplified[side][0]);
       }
     }
   }
@@ -109,7 +108,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
 
   // Remove duplicate and false triples
   for (const side of [ 'positive', 'negative' ] as const) {
-    const clauseQuads = quads[side] ? getQuads(quads[side]!) : getQuads(clause[side]);
+    const clauseQuads = quads[side] ? quads[side]! : clause[side];
     const removeIdx = new Set<number>();
     const neg = side === 'negative';
     for (const [idxA, quadA] of clauseQuads.entries()) {
@@ -144,7 +143,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
       }
     }
     if (removeIdx.size > 0) {
-      quads[side] = new Store(clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx)));
+      quads[side] = clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx));
     }
   }
 
@@ -156,7 +155,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
   });
 
   // We have removed all false values, so nothing true is left
-  if (result.clauses.length === 0 && result.positive.size === 0 && result.negative.size === 0) {
+  if (result.clauses.length === 0 && result.positive.length === 0 && result.negative.length === 0) {
     throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${stringifyClause(clause)}`);
   }
 
@@ -179,10 +178,10 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
     return false;
   }
 
-  const quads: { positive: Store | undefined; negative: Store | undefined } = { positive: undefined, negative: undefined };
+  const quads: Partial<Pick<Clause, 'positive' | 'negative'>> = { positive: undefined, negative: undefined };
 
   for (const side of [ 'positive', 'negative' ] as const) {
-    const clauseQuads = getQuads(clause[side]);
+    const clauseQuads = clause[side];
     const removeIdx = new Set<number>();
     for (const [idxA, quadA] of clauseQuads.entries()) {
       // Remove "duplicates"
@@ -209,7 +208,7 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
       }
     }
     if (removeIdx.size > 0) {
-      quads[side] = new Store(clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx)));
+      quads[side] = clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx));
     }
   }
 
@@ -219,7 +218,7 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
     negative: quads.negative ?? clause.negative,
   });
 
-  if (result.positive.size === 0 && result.negative.size === 0) {
+  if (result.positive.length === 0 && result.negative.length === 0) {
     return true;
   }
 
@@ -234,13 +233,13 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
 // TODO: Used to help simplify (A && B) || (A && B && C) to A && B
 export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
   for (const quad of clause.positive) {
-    if (parent.positive.has(quad)) {
+    if (parent.positive.some((parentQuad): boolean => quad.equals(parentQuad))) {
       logger.debug(`${stringifyQuad(quad)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
   }
   for (const quad of clause.negative) {
-    if (parent.negative.has(quad)) {
+    if (parent.negative.some((parentQuad): boolean => quad.equals(parentQuad))) {
       logger.debug(`${stringifyQuad(quad, true)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
@@ -251,14 +250,14 @@ export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
     }
     let match = true;
     for (const quad of conj.positive) {
-      if (!clause.positive.has(quad)) {
+      if (!clause.positive.some((clauseQuad): boolean => quad.equals(clauseQuad))) {
         match = false;
         break;
       }
     }
     if (match) {
       for (const quad of conj.negative) {
-        if (!clause.negative.has(quad)) {
+        if (!clause.negative.some((clauseQuad): boolean => quad.equals(clauseQuad))) {
           match = false;
           break;
         }
@@ -347,10 +346,10 @@ export function clauseToTriples(clause: Clause): Clause | undefined {
     return clause;
   }
   // Let's just assume we don't have empty clauses here
-  if (clause.positive.size + clause.negative.size + clause.clauses.length > 1) {
+  if (clause.positive.length + clause.negative.length + clause.clauses.length > 1) {
     return;
   }
-  if (clause.positive.size === 1 || clause.negative.size === 1) {
+  if (clause.positive.length === 1 || clause.negative.length === 1) {
     return { ...clause, conjunction: true };
   }
   return clause.clauses[0];

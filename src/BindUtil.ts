@@ -1,5 +1,5 @@
 import { NamedNode, Quad, Term } from '@rdfjs/types';
-import { DataFactory, Store } from 'n3';
+import { DataFactory } from 'n3';
 import { Clause, createClause, RootClause } from './ClauseUtil';
 import { QUAD_POSITIONS } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
@@ -51,8 +51,8 @@ export function applyBindings(clause: Clause, bindings: Record<string, Term>): C
   const children = clause.clauses.map((child): Clause | undefined => applyBindings(child, bindings));
   let change = children.some((child): boolean => Boolean(child));
   const clauses = change ? children.map((child, idx): Clause => child ?? clause.clauses[idx]) : clause.clauses;
-  const boundPositive = applyBindingsToStore(clause.positive, bindings);
-  const boundNegative = applyBindingsToStore(clause.negative, bindings);
+  const boundPositive = applyBindingsToQuads(clause.positive, bindings);
+  const boundNegative = applyBindingsToQuads(clause.negative, bindings);
   change = change || Boolean(boundPositive) || Boolean(boundNegative);
   if (change) {
     return createClause({
@@ -64,10 +64,10 @@ export function applyBindings(clause: Clause, bindings: Record<string, Term>): C
   }
 }
 
-export function applyBindingsToStore(store: Store, bindings: Record<string, Term>): Store | undefined {
+export function applyBindingsToQuads(quads: Quad[], bindings: Record<string, Term>): Quad[] | undefined {
   let change = false;
   let bound: Quad[] = [];
-  for (const quad of store) {
+  for (const quad of quads) {
     let updateQuad = false;
     let boundQuad: Partial<Quad> = {};
     for (const pos of QUAD_POSITIONS) {
@@ -90,6 +90,6 @@ export function applyBindingsToStore(store: Store, bindings: Record<string, Term
     ): quad);
   }
   if (change) {
-    return new Store(bound);
+    return bound;
   }
 }
