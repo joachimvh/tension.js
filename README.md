@@ -10,11 +10,9 @@ Some random notes:
 * Probably not completely logically sound.
   Triples with the same blank node twice or some weird existential/universal combinations will probably trip it up.
 * Also not handling existentials that well yet.
-* Manually tested on some of the surface tests so most haven't been tested yet.
-* Beetle and beetle 6 tests can be solved.
-  Beetle12 potentially as well but would take a long time as it explodes in options.
 * No list support (except for graffiti)
 * Output only through logging currently, no way yet to use this in a bigger project.
+* Tests can be found at <https://github.com/eyereasoner/rdfsurfaces-tests>.
 
 ## How it works
 
@@ -50,8 +48,8 @@ One such iteration is called a `step`.
 The maximum amount of steps that the reasoner should execute can be set using the CLI.
 The three blocks are called "simplify", "bind", and "overlap".
 
-By default, the reasoner will keep going until it really can't find anything new.
-The `--answer` option can be used to make sure the reasoner stops when it can fulfill the contents of the answer surface.
+By default, the reasoner will keep going until it really can't find anything new,
+or it solves an answer surface.
 
 ### Simplify
 
@@ -94,3 +92,6 @@ so `f(A) || (f(B) && f(C))` and `g(A) || (-f(B) && g(C))` will result in two new
 
 Overlap can also be done with universals present.
 `∀x: f(x) || g(x)` and `-f(A) || g(B)` will generate `g(A) || g(B)`.
+
+As a pruning strategy, overlap results that have more quads than their parents combined,
+will not be stored.
