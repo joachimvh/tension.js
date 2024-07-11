@@ -1,13 +1,14 @@
-import { BlankNode, NamedNode, Quad, Quad_Object, Quad_Predicate, Quad_Subject, Term } from '@rdfjs/types';
-import { DataFactory, Store } from 'n3';
+import { BlankNode } from '@rdfjs/types';
+import { DataFactory } from 'n3';
 import { N3Parser } from 'n3-parser.js';
-import { quadToStringQuad, stringToTerm } from 'rdf-string';
+import { stringToTerm } from 'rdf-string';
 import { Clause } from './ClauseUtil';
+import { FancyQuad, FancyTerm, Graph, List } from './FancyUtil';
 
 const DF = DataFactory;
 
 export type Formula = {
-  data: Quad[];
+  data: FancyQuad[];
   surfaces: NegativeSurface[];
 }
 
@@ -55,24 +56,16 @@ function parseFormula(graph: Record<string, unknown>, prefixes: Record<string, s
   return result;
 }
 
-function parseEntry(entry: Record<string, unknown>, prefixes: Record<string, string>): Quad[] | NegativeSurface {
+function parseEntry(entry: Record<string, unknown>, prefixes: Record<string, string>): FancyQuad[] | NegativeSurface {
   removePrefixes(entry, prefixes);
-  if ('@list' in entry) {
-    if (!(ON_NEGATIVE_SURFACE in entry) && !(ON_NEGATIVE_ANSWER_SURFACE in entry)) {
-      throw new Error(`Please don't put lists in subject for now, thank you! ${JSON.stringify(entry)}`);
-    }
+  if ('@list' in entry && ((ON_NEGATIVE_SURFACE in entry) || (ON_NEGATIVE_ANSWER_SURFACE in entry))) {
     // Negative surfaces
     const graffiti = parseGraffiti(entry['@list'] as object[]);
     const formula = parseFormula(entry[ON_NEGATIVE_SURFACE] as Record<string, unknown> || entry[ON_NEGATIVE_ANSWER_SURFACE], prefixes);
     return { graffiti, formula: formula as Formula, answer: ON_NEGATIVE_ANSWER_SURFACE in entry};
-  } else if ('@id' in entry ){
-    // Data
-    // TODO: this doesn't support complexer triples that N3 allows
-    //       mostly just lists, nobody likes lists
-    return parseQuads(entry, prefixes);
   }
-
-  throw new Error(`Unexpected entry ${JSON.stringify(entry)}`);
+  // Data
+  return parseQuads(entry, prefixes);
 }
 
 function removePrefixes(entry: Record<string, unknown>, prefixes: Record<string, string>): void {
@@ -113,20 +106,17 @@ function parseGraffiti(graffiti: object[]): BlankNode[] {
 }
 
 function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], prefixes: Record<string, string>,
-  subject?: Quad_Subject | BlankNode, predicate?: Quad_Predicate): Quad[] {
+  subject?: FancyTerm, predicate?: FancyTerm): FancyQuad[] {
   if (Array.isArray(input)) {
-    return input.flatMap((child): Quad[] => parseQuads(child, prefixes, subject, predicate));
+    return input.flatMap((child): FancyQuad[] => parseQuads(child, prefixes, subject, predicate));
   }
   removePrefixes(input, prefixes);
-  if (!input['@id']) {
-    // TODO: literals
-    throw new Error(`Missing @id: ${JSON.stringify(input)}`);
-  }
-  const result: Quad[] = [];
-  const id = input['@id'] as string;
-  const newSubject = id.startsWith('_:') ? DF.blankNode(id.slice(2)) : DF.namedNode(id);
+
+  let newSubject = parseTerm(input, prefixes);
+  const result: FancyQuad[] = [];
+
   if (subject && predicate) {
-    result.push(DF.quad(subject, predicate, newSubject));
+    result.push(createFancyQuad(subject, predicate, newSubject));
   }
 
   // For each field: either it's a new object with an @id, so recurse (unless only field), it's a string, so parse, or could be complex value object
@@ -143,32 +133,54 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
         continue;
       }
       if (Array.isArray(val)) {
-        result.push(...val.map((child): Quad => DF.quad(newSubject, RDF_TYPE, stringToTerm(child) as Quad_Object)))
+        result.push(...val.map((child): FancyQuad => createFancyQuad(newSubject, RDF_TYPE, stringToTerm(child as string))));
       } else {
-        result.push(DF.quad(newSubject, RDF_TYPE, stringToTerm(val as string) as Quad_Object));
+        result.push(createFancyQuad(newSubject, RDF_TYPE, stringToTerm(val as string)));
       }
-    } else if (typeof val === 'string' || typeof val === 'number') {
-      result.push(DF.quad(newSubject, stringToTerm(key) as Quad_Predicate, DF.literal(val)));
-    } else if (typeof val === 'boolean') {
-      result.push(DF.quad(newSubject, stringToTerm(key) as Quad_Predicate, DF.literal(`${val}`, DF.namedNode('http://www.w3.org/2001/XMLSchema#boolean'))));
+    } else if (typeof val === 'object') {
+      result.push(...parseQuads(val as Record<string, unknown>, prefixes, newSubject, stringToTerm(key)));
     } else {
-      result.push(...parseQuads(val as Record<string, unknown>, prefixes, newSubject, stringToTerm(key) as Quad_Predicate));
+      result.push(createFancyQuad(newSubject, stringToTerm(key), parseTerm(val, prefixes)));
     }
   }
 
   return result;
 }
 
-export function toSimpleFormula(formula: Formula): Record<keyof Formula, unknown> {
-  const data = formula.data.map(quadToStringQuad);
-  const surfaces = formula.surfaces.map(toSimpleSurface);
-  return { data, surfaces };
+function createFancyQuad(subject: FancyTerm, predicate: FancyTerm, object: FancyTerm): FancyQuad {
+  return { subject, predicate, object };
 }
 
-export function toSimpleSurface(surface: NegativeSurface): Record<keyof NegativeSurface, unknown> {
-  const graffiti = surface.graffiti.map(stringifyTerm);
-  const formula = toSimpleFormula(surface.formula);
-  return { graffiti, formula, answer: surface.answer };
+// TODO: no way to differentiate between literals and named nodes
+function parseTerm(input: unknown, prefixes: Record<string, string>): FancyTerm {
+  if (typeof input === 'string' || typeof input === 'number') {
+    return DF.literal(input);
+  }
+
+  if (typeof input === 'boolean') {
+    return DF.literal(`${input}`, DF.namedNode('http://www.w3.org/2001/XMLSchema#boolean'));
+  }
+
+  if (typeof input === 'object') {
+    if ('@id' in input!) {
+      const id = input['@id'] as string;
+      return id.startsWith('_:') ? DF.blankNode(id.slice(2)) : DF.namedNode(id);
+    }
+    if ('@list' in input!) {
+      return {
+        termType: 'List',
+        value: (input['@list'] as unknown[]).flatMap((child): FancyTerm => parseTerm(child, prefixes)),
+      } satisfies List;
+    }
+    if ('@graph' in input!) {
+      return {
+        termType: 'Graph',
+        value: (input['@graph'] as unknown[]).flatMap((child): FancyQuad[] => parseQuads(child as any, prefixes)),
+      } satisfies Graph;
+    }
+  }
+
+  throw new Error(`Unable to parse input into term: ${input}`);
 }
 
 // TODO: pretty option with indentation and stuff
@@ -184,11 +196,11 @@ export function stringifyClause(clause: Clause): string {
   return members.join(` ${clause.conjunction ? '&&' : '||'} `);
 }
 
-export function stringifyQuad(quad: Quad, negated: boolean = false): string {
+export function stringifyQuad(quad: FancyQuad, negated: boolean = false): string {
   return `${negated ? '-' : ''}(${stringifyTerm(quad.subject)} ${stringifyTerm(quad.predicate)} ${stringifyTerm(quad.object)})`;
 }
 
-export function stringifyTerm(term: Term): string {
+export function stringifyTerm(term: FancyTerm): string {
   if (term.termType === 'NamedNode') {
     if (term.value === 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type') {
       return 'a';
@@ -203,6 +215,12 @@ export function stringifyTerm(term: Term): string {
       return term.value;
     }
     return `"${term.value}"`;
+  }
+  if (term.termType === 'Graph') {
+    return `{ ${term.value.map((quad): string => stringifyQuad(quad)).join('. ')} }`;
+  }
+  if (term.termType === 'List') {
+    return `( ${term.value.map(stringifyTerm).join(' ')} )`;
   }
   throw new Error('Unsupported term type ' + term.termType);
 }

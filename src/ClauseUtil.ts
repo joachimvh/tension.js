@@ -1,12 +1,12 @@
-import { BlankNode, NamedNode, Quad } from '@rdfjs/types';
-import { DataFactory, Store } from 'n3';
+import { BlankNode } from '@rdfjs/types';
+import { DataFactory } from 'n3';
+import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
 import { Formula, NegativeSurface, QUAD_POSITIONS } from './ParseUtil';
-
 
 export type Clause = {
   conjunction: boolean;
-  positive: Quad[];
-  negative: Quad[];
+  positive: FancyQuad[];
+  negative: FancyQuad[];
   clauses: Clause[];
 }
 
@@ -29,30 +29,12 @@ export function createClause(options: Partial<Clause> & { conjunction: boolean }
 }
 
 export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> = new Set(), map: Record<string, BlankNode> = {}): Formula {
-  const newQuads: Quad[] = [];
+  const newQuads: FancyQuad[] = [];
   let changed = false;
   for (const quad of formula.data) {
-    let changedQuad = false;
-    let newPos: Partial<Quad> = {};
-    for (const pos of QUAD_POSITIONS) {
-      const term = quad[pos];
-      if (term.termType === 'BlankNode') {
-        // Could have blank nodes not in graffiti, also need to account for those
-        names.add(term.value);
-        const newNode = map[term.value];
-        if (newNode) {
-          changed = true;
-          changedQuad = true;
-          // Get around Quad_Predicate typing issues
-          newPos[pos] = newNode as unknown as NamedNode;
-        }
-      }
-    }
-    if (changedQuad) {
-      newQuads.push(DataFactory.quad(newPos.subject ?? quad.subject, newPos.predicate ?? quad.predicate, newPos.object ?? quad.object));
-    } else {
-      newQuads.push(quad);
-    }
+    let newQuad = removeDuplicateQuadBlankNodes(quad, names, map);
+    newQuads.push(newQuad ?? quad);
+    changed = changed || Boolean(newQuad);
   }
 
   if (changed) {
@@ -80,6 +62,48 @@ export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> =
   }
 
   return formula;
+}
+
+export function removeDuplicateQuadBlankNodes(quad: FancyQuad, names: Set<string>, map: Record<string, BlankNode>): FancyQuad | undefined {
+  let changedQuad = false;
+  let newQuad: Partial<FancyQuad> = {};
+  for (const pos of QUAD_POSITIONS) {
+    const term = removeDuplicateTermBlankNodes(quad[pos], names, map);
+    if (term) {
+      newQuad[pos] = term;
+      changedQuad = true;
+    }
+  }
+  if (changedQuad) {
+    return {
+      ...quad,
+      ...newQuad,
+    };
+  }
+}
+
+export function removeDuplicateTermBlankNodes(term: FancyTerm, names: Set<string>, map: Record<string, BlankNode>): FancyTerm | undefined {
+  if (term.termType === 'BlankNode') {
+    // Could have blank nodes not in graffiti, also need to account for those
+    names.add(term.value);
+    return map[term.value];
+  }
+
+  if (term.termType === 'Graph' || term.termType === 'List') {
+    let changed = false;
+    let result: (FancyQuad | FancyTerm)[] = [];
+    const callback = term.termType === 'Graph' ? removeDuplicateQuadBlankNodes : removeDuplicateTermBlankNodes;
+    for (const child of term.value) {
+      const childResult = callback(child as any, names, map);
+      if (childResult) {
+        changed = true;
+        result.push(childResult);
+      } else {
+        result.push(child);
+      }
+    }
+    return changed ? { ...term, value: result as any } : undefined;
+  }
 }
 
 export function pullGraffitiUp(formula: Formula): Formula {
@@ -127,7 +151,7 @@ export function surfaceToClause(surface: NegativeSurface, quantifierMap: Record<
   }
 
   const children = surface.formula.surfaces.map((child): Clause => surfaceToClause(child, quantifierMap, level + 1));
-  const negative: Quad[] = [];
+  const negative: FancyQuad[] = [];
   const positive = surface.formula.data;
   const conjs = children.filter((clause): boolean => clause.conjunction);
   const disjs = children.filter((clause): boolean => !clause.conjunction);
@@ -232,12 +256,12 @@ export function isSameClause(left: Clause, right: Clause): boolean {
     return false;
   }
   for (const leftQuad of left.positive) {
-    if (!right.positive.some((quad): boolean => quad.equals(leftQuad))) {
+    if (!right.positive.some((quad): boolean => fancyEquals(quad, leftQuad))) {
       return false;
     }
   }
   for (const leftQuad of left.negative) {
-    if (!right.negative.some((quad): boolean => quad.equals(leftQuad))) {
+    if (!right.negative.some((quad): boolean => fancyEquals(quad, leftQuad))) {
       return false;
     }
   }
@@ -275,7 +299,7 @@ export function isDisjunctionSubset(left: Clause, right: Clause, quantifiers: Re
 }
 
 // TODO: checks equality but also allows different blank nodes in the same position if there is a valid mapping.
-export function quadEqualsUniversal(left: Quad, right: Quad, quantifiers: Record<string, number>, blankMap: Record<string, string>): boolean {
+export function quadEqualsUniversal(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>, blankMap: Record<string, string>): boolean {
   const newBlankMap = { ...blankMap };
   for (const pos of QUAD_POSITIONS) {
     const leftTerm = left[pos];
@@ -288,7 +312,7 @@ export function quadEqualsUniversal(left: Quad, right: Quad, quantifiers: Record
         return false;
       }
       newBlankMap[leftTerm.value] = rightTerm.value;
-    } else if (!leftTerm.equals(rightTerm)) {
+    } else if (!fancyEquals(leftTerm, rightTerm)) {
       return false;
     }
   }
@@ -297,20 +321,14 @@ export function quadEqualsUniversal(left: Quad, right: Quad, quantifiers: Record
   return true;
 }
 
-export function getQuads(store: Store): Quad[] {
-  return store.getQuads(null, null, null, null);
-}
-
 // TODO: nog longer checking uniqueness
-export function mergeData(...args: (Store | Quad[] | Quad)[]): Quad[] {
-  const result: Quad[] = [];
+export function mergeData(...args: (FancyQuad[] | FancyQuad)[]): FancyQuad[] {
+  const result: FancyQuad[] = [];
   for (const arg of args) {
     if (Array.isArray(arg)) {
       result.push(...arg);
     } else if ('subject' in arg) {
       result.push(arg);
-    } else {
-      result.push(...getQuads(arg));
     }
   }
   return result;

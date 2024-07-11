@@ -1,5 +1,6 @@
-import { BlankNode, Quad, Term } from '@rdfjs/types';
-import { Clause, createClause, getQuads, mergeData, RootClause } from './ClauseUtil';
+import { BlankNode } from '@rdfjs/types';
+import { Clause, createClause, RootClause } from './ClauseUtil';
+import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
 
@@ -77,7 +78,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
       if (simplified.positive.length + simplified.negative.length === 1) {
         removeClauseIdx.add(idx);
         const side = simplified.positive.length === 1 ? 'positive' : 'negative';
-        quads[side] = quads[side] || mergeData(clause[side]);
+        quads[side] = quads[side] || [...clause[side]];
         quads[side]!.push(simplified[side][0]);
       }
     }
@@ -123,7 +124,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
         //       it could be that only f(A) is true for all values
         //       \forall x: f(x) | g(x) | f(A) also does not imply \forall x: g(x) | f(A)!
         // if (impliesQuad(quadB, quadA, root.quantifiers)) {
-        if (quadA.equals(quadB)) {
+        if (fancyEquals(quadA, quadB)) {
           removeIdx.add(idxA);
           logger.debug(`${stringifyQuad(quadB, neg)} implies ${stringifyQuad(quadA, neg)} can be removed from disjunction (same disjunction)`);
           break;
@@ -233,13 +234,13 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
 // TODO: Used to help simplify (A && B) || (A && B && C) to A && B
 export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
   for (const quad of clause.positive) {
-    if (parent.positive.some((parentQuad): boolean => quad.equals(parentQuad))) {
+    if (parent.positive.some((parentQuad): boolean => fancyEquals(quad, parentQuad))) {
       logger.debug(`${stringifyQuad(quad)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
   }
   for (const quad of clause.negative) {
-    if (parent.negative.some((parentQuad): boolean => quad.equals(parentQuad))) {
+    if (parent.negative.some((parentQuad): boolean => fancyEquals(quad, parentQuad))) {
       logger.debug(`${stringifyQuad(quad, true)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
@@ -250,14 +251,14 @@ export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
     }
     let match = true;
     for (const quad of conj.positive) {
-      if (!clause.positive.some((clauseQuad): boolean => quad.equals(clauseQuad))) {
+      if (!clause.positive.some((clauseQuad): boolean => fancyEquals(quad, clauseQuad))) {
         match = false;
         break;
       }
     }
     if (match) {
       for (const quad of conj.negative) {
-        if (!clause.negative.some((clauseQuad): boolean => quad.equals(clauseQuad))) {
+        if (!clause.negative.some((clauseQuad): boolean => fancyEquals(quad, clauseQuad))) {
           match = false;
           break;
         }
@@ -355,7 +356,8 @@ export function clauseToTriples(clause: Clause): Clause | undefined {
   return clause.clauses[0];
 }
 
-export function compareTerms(left: Quad, right: Quad, comparator: (termLeft: Term, termRight: Term) => boolean | undefined): boolean {
+export function compareTerms(left: FancyQuad, right: FancyQuad,
+  comparator: (termLeft: FancyTerm, termRight: FancyTerm) => boolean | undefined): boolean {
   for (const pos of QUAD_POSITIONS) {
     const termLeft = left[pos];
     const termRight = right[pos];
@@ -371,7 +373,7 @@ export function compareTerms(left: Quad, right: Quad, comparator: (termLeft: Ter
 
 // TODO: all the functions below have issues with for example the same blank node occurring twice in a quad, need to track implied bindings
 
-export function conjunctionContradiction(positive: Quad, negative: Quad, quantifiers: Record<string, number>): boolean {
+export function conjunctionContradiction(positive: FancyQuad, negative: FancyQuad, quantifiers: Record<string, number>): boolean {
   return compareTerms(positive, negative, (termLeft, termRight) => {
     if (isUniversal(termLeft, quantifiers)) {
       return;
@@ -379,13 +381,14 @@ export function conjunctionContradiction(positive: Quad, negative: Quad, quantif
     if (isUniversal(termRight, quantifiers)) {
       return;
     }
-    if (!termLeft.equals(termRight)) {
+    // TODO: here and all other ones: recursive universal checks in lists/graphs
+    if (!fancyEquals(termLeft, termRight)) {
       return false;
     }
   });
 }
 
-export function disjunctionTautology(positive: Quad, negative: Quad, quantifiers: Record<string, number>): boolean {
+export function disjunctionTautology(positive: FancyQuad, negative: FancyQuad, quantifiers: Record<string, number>): boolean {
   return compareTerms(positive, negative, (termLeft, termRight) => {
     if (isExistential(termLeft, quantifiers) && !isUniversal(termRight, quantifiers)) {
       return;
@@ -393,25 +396,25 @@ export function disjunctionTautology(positive: Quad, negative: Quad, quantifiers
     if (isExistential(termRight, quantifiers) && !isUniversal(termLeft, quantifiers)) {
       return;
     }
-    if (!termLeft.equals(termRight)) {
+    if (!fancyEquals(termLeft, termRight)) {
       return false;
     }
   });
 }
 
-export function equalOrLeftUniversal(left: Quad, right: Quad, quantifiers: Record<string, number>): boolean {
+export function equalOrLeftUniversal(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
   return compareTerms(left, right, (termLeft, termRight) => {
     if (isUniversal(termLeft, quantifiers)) {
       return;
     }
-    if (!termLeft.equals(termRight)) {
+    if (!fancyEquals(termLeft, termRight)) {
       return false;
     }
   });
 }
 
 // TODO: this function is identical to equalOrLeftUniversal, currently here for semantic reasons
-export function impliesQuad(left: Quad, right: Quad, quantifiers: Record<string, number>): boolean {
+export function impliesQuad(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
   return compareTerms(left, right, (termLeft, termRight) => {
     if (isUniversal(termLeft, quantifiers)) {
       return;
@@ -422,17 +425,17 @@ export function impliesQuad(left: Quad, right: Quad, quantifiers: Record<string,
     // if (isExistential(termRight, quantifiers)) {
     //   return;
     // }
-    if (!termLeft.equals(termRight)) {
+    if (!fancyEquals(termLeft, termRight)) {
       return false;
     }
   });
 }
 
-export function isUniversal(term: Term, quantifiers: Record<string, number>): boolean {
+export function isUniversal(term: FancyTerm, quantifiers: Record<string, number>): term is BlankNode {
   return term.termType === 'BlankNode' && isBlankNodeUniversal(term, quantifiers);
 }
 
-export function isExistential(term: Term, quantifiers: Record<string, number>): boolean {
+export function isExistential(term: FancyTerm, quantifiers: Record<string, number>): term is BlankNode {
   return term.termType === 'BlankNode' && !isBlankNodeUniversal(term, quantifiers);
 }
 
