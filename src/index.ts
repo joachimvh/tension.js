@@ -70,6 +70,7 @@
 
 export * from './BindUtil';
 export * from './ClauseUtil';
+export * from './FancyUtil';
 export * from './LogUtil';
 export * from './OverlapUtil';
 export * from './ParseUtil';

@@ -1,8 +1,8 @@
-import { Quad, Term } from '@rdfjs/types';
-import { applyBindingsToQuads } from './BindUtil';
+import { applyBindingsToQuads, getBinding } from './BindUtil';
 import { Clause, createClause, mergeData, RootClause } from './ClauseUtil';
+import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { QUAD_POSITIONS, stringifyClause } from './ParseUtil';
+import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
 
 const logger = getLogger('Overlap');
@@ -12,17 +12,17 @@ const logger = getLogger('Overlap');
 export type ClauseOverlap = {
   left: {
     clause: Clause;
-    remove: Quad;
+    remove: FancyQuad;
     // If the quad is in a conjunction
     removeClause?: Clause;
   };
   right: {
     clause: Clause;
-    remove: Quad;
+    remove: FancyQuad;
     removeClause?: Clause;
   };
   leftPositive: boolean;
-  binding: Record<string, Term>;
+  binding: Record<string, FancyTerm>;
 }
 
 export function* findOverlappingClause(root: RootClause): IterableIterator<ClauseOverlap> {
@@ -181,7 +181,7 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   return result;
 }
 
-export function removeQuad(quads: Quad[], quad: Quad): void {
+export function removeQuad(quads: FancyQuad[], quad: FancyQuad): void {
   quads.splice(quads.indexOf(quad), 1);
 }
 
@@ -222,7 +222,7 @@ export function getClauseOverlap(left: Clause, right: Clause, quantifiers: Recor
   }
 }
 
-export function findQuadOverlap(left: { clause: Clause; value: Clause | Quad }, right: { clause: Clause; value: Clause | Quad }, leftPositive: boolean, quantifiers: Record<string, number>): ClauseOverlap | undefined {
+export function findQuadOverlap(left: { clause: Clause; value: Clause | FancyQuad }, right: { clause: Clause; value: Clause | FancyQuad }, leftPositive: boolean, quantifiers: Record<string, number>): ClauseOverlap | undefined {
   if (isClause(left.value)) {
     for (const side of [ 'positive', 'negative' ] as const) {
       for (const leftQuad of left.value[side]) {
@@ -249,6 +249,7 @@ export function findQuadOverlap(left: { clause: Clause; value: Clause | Quad }, 
   }
 
   // Both are quads
+  // TODO: should reuse binding functions
   const binding = getOverlapBinding(left.value, right.value, quantifiers);
   if (binding) {
     return {
@@ -262,8 +263,8 @@ export function findQuadOverlap(left: { clause: Clause; value: Clause | Quad }, 
 
 // TODO: is it possible this returns conflicting bindings for the same clauses?
 //       -> not a problem but only use those that do not conflict though
-export function getOverlapBinding(left: Quad, right: Quad, quantifiers: Record<string, number>): Record<string, Term> | undefined {
-  let bindings: Record<string, Term> = {};
+export function getOverlapBinding(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): Record<string, FancyTerm> | undefined {
+  let bindings: Record<string, FancyTerm> = {};
   for (const pos of QUAD_POSITIONS) {
     const leftTerm = left[pos];
     const rightTerm = right[pos];
@@ -271,13 +272,13 @@ export function getOverlapBinding(left: Quad, right: Quad, quantifiers: Record<s
       bindings[leftTerm.value] = rightTerm;
     } else if (isUniversal(rightTerm, quantifiers)) {
       bindings[rightTerm.value] = leftTerm;
-    } else if (!leftTerm.equals(rightTerm)) {
+    } else if (!fancyEquals(leftTerm, rightTerm)) {
       return;
     }
   }
   return bindings;
 }
 
-export function isClause(value: Clause | Quad): value is Clause {
+export function isClause(value: Clause | FancyQuad): value is Clause {
   return value.hasOwnProperty('clauses');
 }

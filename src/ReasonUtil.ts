@@ -1,7 +1,7 @@
-import { Term } from '@rdfjs/types';
 import { inspect } from 'node:util';
 import { applyBindings, findBindings } from './BindUtil';
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
+import { fancyEquals, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import { applyClauseOverlap, ClauseOverlap, findOverlappingClause } from './OverlapUtil';
 import { stringifyClause } from './ParseUtil';
@@ -10,7 +10,7 @@ import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot }
 const logger = getLogger('Reason');
 
 export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
-  const bindingCache: Record<string, Term>[] = [];
+  const bindingCache: Record<string, FancyTerm>[] = [];
   const overlapCache: ClauseOverlap[] = [];
   let count = 0;
 
@@ -21,7 +21,7 @@ export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5):
   logger.debug('FINISHED');
 }
 
-export function reasonStep(root: RootClause, answerClauses: Clause[], bindingCache: Record<string, Term>[], overlapCache: ClauseOverlap[]): boolean {
+export function reasonStep(root: RootClause, answerClauses: Clause[], bindingCache: Record<string, FancyTerm>[], overlapCache: ClauseOverlap[]): boolean {
   let change = false;
   while (simplifyRoot(root)) {
     logger.debug(`Simplified root to ${stringifyClause(root)}`);
@@ -111,7 +111,7 @@ export function handleNewClause(root: RootClause, clause: Clause, newClauses: Cl
   return true;
 }
 
-export function isSameBinding(left: Record<string, Term>, right: Record<string, Term>): boolean {
+export function isSameBinding(left: Record<string, FancyTerm>, right: Record<string, FancyTerm>): boolean {
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
   if (leftKeys.length !== rightKeys.length) {
@@ -123,7 +123,7 @@ export function isSameBinding(left: Record<string, Term>, right: Record<string, 
     if (key !== rightKeys[idx]) {
       return false;
     }
-    if (!left[key].equals(right[key])) {
+    if (!fancyEquals(left[key], right[key])) {
       return false;
     }
   }
@@ -134,9 +134,9 @@ export function isSameOverlap(left: ClauseOverlap, right: ClauseOverlap): boolea
   return isSameBinding(left.binding, right.binding) &&
     left.leftPositive === right.leftPositive &&
     left.left.clause === right.left.clause &&
-    left.left.remove.equals(right.left.remove) &&
+    fancyEquals(left.left.remove, right.left.remove) &&
     left.right.clause === right.right.clause &&
-    right.right.remove.equals(right.right.remove);
+    fancyEquals(right.right.remove, right.right.remove);
 }
 
 export function countQuads(clause: Clause): number {

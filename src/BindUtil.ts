@@ -1,17 +1,16 @@
-import { NamedNode, Quad, Term } from '@rdfjs/types';
-import { DataFactory } from 'n3';
 import { Clause, createClause, RootClause } from './ClauseUtil';
+import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
 import { QUAD_POSITIONS } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
 
-export function* findBindings(root: RootClause): IterableIterator<Record<string, Term>> {
+export function* findBindings(root: RootClause): IterableIterator<Record<string, FancyTerm>> {
   for (const clause of root.clauses) {
     yield* findClauseBindings(root, clause);
   }
 }
 
 // TODO: just trying to find any matching triples in the hope to get something interesting
-export function* findClauseBindings(root: RootClause, clause: Clause): IterableIterator<Record<string, Term>> {
+export function* findClauseBindings(root: RootClause, clause: Clause): IterableIterator<Record<string, FancyTerm>> {
   for (const child of clause.clauses) {
     yield* findClauseBindings(root, child);
   }
@@ -20,7 +19,7 @@ export function* findClauseBindings(root: RootClause, clause: Clause): IterableI
       for (const rootSide of [ 'positive', 'negative' ] as const) {
         for (const rootQuad of root[rootSide]) {
           const binding = getBinding(quad, rootQuad, root.quantifiers);
-          if (binding) {
+          if (binding && Object.keys(binding).length > 0) {
             yield binding;
           }
         }
@@ -30,24 +29,51 @@ export function* findClauseBindings(root: RootClause, clause: Clause): IterableI
 }
 
 // TODO: left one is the one that should have the universals
-export function getBinding(left: Quad, right: Quad, quantifiers: Record<string, number>): Record<string, Term> | undefined {
-  let binding: Record<string, Term> = {};
+// TODO: returns undefined if no binding is possible, returns {} if a binding is possible but no mappings are needed
+export function getBinding(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): Record<string, FancyTerm> | undefined {
+  // TODO: might have to differentiate between no mapping and impossible mapping?
+  let binding: Record<string, FancyTerm> = {};
   for (const pos of QUAD_POSITIONS) {
-    const leftTerm = left[pos];
-    const rightTerm = right[pos];
-    if (isUniversal(leftTerm, quantifiers)) {
-      binding[leftTerm.value] = rightTerm;
-    } else if (!leftTerm.equals(rightTerm)) {
+    const result = getTermBinding(left[pos], right[pos], quantifiers);
+    if (!result) {
       return;
     }
+    // TODO: check for conflicting bindings?
+    Object.assign(binding, result);
   }
-  if (Object.keys(binding).length > 0) {
-    return binding;
+  return binding;
+}
+
+export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: Record<string, number>): Record<string, FancyTerm> | undefined {
+  const result: Record<string, FancyTerm> = {};
+
+  if (left.termType === 'Graph' || left.termType === 'List') {
+    if (right.termType !== left.termType) {
+      return;
+    }
+    const callback = left.termType === 'Graph' ? getBinding : getTermBinding;
+    for (let i = 0; i < left.value.length; ++i) {
+      // TODO: check for conflicting bindings?
+      const partial = callback(left.value[i] as any, right.value[i] as any, quantifiers);
+      if (!partial) {
+        return;
+      }
+      Object.assign(result, partial);
+    }
+    return result;
   }
+
+  if (isUniversal(left, quantifiers)) {
+    result[left.value] = right;
+  } else if (!fancyEquals(left, right)) {
+    return;
+  }
+
+  return result;
 }
 
 // TODO: undefined implies there was no change
-export function applyBindings(clause: Clause, bindings: Record<string, Term>): Clause | undefined {
+export function applyBindings(clause: Clause, bindings: Record<string, FancyTerm>): Clause | undefined {
   const children = clause.clauses.map((child): Clause | undefined => applyBindings(child, bindings));
   let change = children.some((child): boolean => Boolean(child));
   const clauses = change ? children.map((child, idx): Clause => child ?? clause.clauses[idx]) : clause.clauses;
@@ -64,32 +90,60 @@ export function applyBindings(clause: Clause, bindings: Record<string, Term>): C
   }
 }
 
-export function applyBindingsToQuads(quads: Quad[], bindings: Record<string, Term>): Quad[] | undefined {
+export function applyBindingsToQuads(quads: FancyQuad[], bindings: Record<string, FancyTerm>): FancyQuad[] | undefined {
   let change = false;
-  let bound: Quad[] = [];
+  let bound: FancyQuad[] = [];
   for (const quad of quads) {
-    let updateQuad = false;
-    let boundQuad: Partial<Quad> = {};
-    for (const pos of QUAD_POSITIONS) {
-      if (quad[pos].termType !== 'BlankNode') {
-        continue;
-      }
-      const binding = bindings[quad[pos].value];
-      if (!binding) {
-        continue;
-      }
-      // Trust me bro
-      boundQuad[pos] = binding as NamedNode;
-      updateQuad = true;
+    const boundQuad = applyBindingsToQuad(quad, bindings);
+    if (boundQuad) {
       change = true;
+      bound.push(boundQuad);
+    } else {
+      bound.push(quad);
     }
-    bound.push(updateQuad ? DataFactory.quad(
-      boundQuad.subject ?? quad.subject,
-      boundQuad.predicate ?? quad.predicate,
-      boundQuad.object ?? quad.object,
-    ): quad);
   }
   if (change) {
     return bound;
   }
+}
+
+export function applyBindingsToQuad(quad: FancyQuad, bindings: Record<string, FancyTerm>): FancyQuad | undefined {
+  let updateQuad = false;
+  let boundQuad: Partial<FancyQuad> = {};
+  for (const pos of QUAD_POSITIONS) {
+    const boundTerm = applyBindingsToTerm(quad[pos], bindings);
+    if (boundTerm) {
+      boundQuad[pos] = boundTerm;
+      updateQuad = true;
+    }
+  }
+  if (updateQuad) {
+    return {
+      ...quad,
+      ...boundQuad,
+    };
+  }
+}
+
+export function applyBindingsToTerm(term: FancyTerm, bindings: Record<string, FancyTerm>): FancyTerm | undefined {
+  if (term.termType === 'Graph' || term.termType === 'List') {
+    let change = false;
+    let boundValues: (FancyQuad | FancyTerm)[] = [];
+    const callback = term.termType === 'Graph' ? applyBindingsToQuad : applyBindingsToTerm;
+    for (const child of term.value) {
+      const boundQuad = callback(child as any, bindings);
+      if (boundQuad) {
+        change = true;
+        boundValues.push(boundQuad);
+      } else {
+        boundValues.push(child);
+      }
+    }
+    return change ? { ...term, value: boundValues as any } : term;
+  }
+
+  if (term.termType !== 'BlankNode') {
+    return;
+  }
+  return bindings[term.value];
 }
