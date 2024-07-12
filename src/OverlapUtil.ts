@@ -25,10 +25,23 @@ export type ClauseOverlap = {
   binding: Record<string, FancyTerm>;
 }
 
-export function* findOverlappingClause(root: RootClause): IterableIterator<ClauseOverlap> {
+export type OverlapCache = WeakMap<Clause, WeakSet<Clause>>;
+
+export function* findOverlappingClause(root: RootClause, cache: OverlapCache): IterableIterator<ClauseOverlap> {
   for (let i = 0; i < root.clauses.length; i++) {
+    const clause = root.clauses[i];
+    let clauseCache = cache.get(clause);
+    if (!clauseCache) {
+      clauseCache = new WeakSet();
+      cache.set(clause, clauseCache);
+    }
     for (let j = i + 1; j < root.clauses.length; j++) {
-      const overlap = getClauseOverlap(root.clauses[i], root.clauses[j], root.quantifiers);
+      const otherClause = root.clauses[j];
+      if (clauseCache.has(otherClause)) {
+        continue;
+      }
+      clauseCache.add(otherClause);
+      const overlap = getClauseOverlap(clause, otherClause, root.quantifiers);
       if (overlap) {
         yield overlap;
       }

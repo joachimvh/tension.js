@@ -3,7 +3,7 @@ import { applyBindings, BindCache, findBindings, isSameBinding } from './BindUti
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
 import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { applyClauseOverlap, ClauseOverlap, findOverlappingClause } from './OverlapUtil';
+import { applyClauseOverlap, ClauseOverlap, findOverlappingClause, OverlapCache } from './OverlapUtil';
 import { stringifyClause } from './ParseUtil';
 import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
@@ -11,11 +11,11 @@ const logger = getLogger('Reason');
 
 export type ReasonCaches = {
   bindingCache: BindCache,
-  overlapCache: ClauseOverlap[],
+  overlapCache: OverlapCache,
 }
 
 export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
-  const overlapCache: ClauseOverlap[] = [];
+  const overlapCache: OverlapCache = new WeakMap();
   const bindingCache: BindCache = {
     clauses: new WeakSet(),
     quads: new WeakSet(),
@@ -65,11 +65,7 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
   }
 
   let newClauses: Clause[] = [];
-  for (const overlap of findOverlappingClause(root)) {
-    if (caches.overlapCache.some((cached): boolean => isSameOverlap(overlap, cached))) {
-      continue;
-    }
-    caches.overlapCache.push(overlap);
+  for (const overlap of findOverlappingClause(root, caches.overlapCache)) {
     const overlapClauses = applyClauseOverlap(overlap);
     const leftCount = countQuads(overlap.left.clause);
     const rightCount = countQuads(overlap.right.clause);
@@ -114,15 +110,6 @@ export function handleNewClause(root: RootClause, clause: Clause, newClauses: Cl
   logger.debug(`Storing new clause: ${stringifyClause(simplified)}`);
   newClauses.push(simplified);
   return true;
-}
-
-export function isSameOverlap(left: ClauseOverlap, right: ClauseOverlap): boolean {
-  return isSameBinding(left.binding, right.binding) &&
-    left.leftPositive === right.leftPositive &&
-    left.left.clause === right.left.clause &&
-    fancyEquals(left.left.remove, right.left.remove) &&
-    left.right.clause === right.right.clause &&
-    fancyEquals(right.right.remove, right.right.remove);
 }
 
 export function countQuads(clause: Clause): number {
