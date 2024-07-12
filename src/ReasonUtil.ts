@@ -1,7 +1,7 @@
 import { inspect } from 'node:util';
-import { applyBindings, findBindings } from './BindUtil';
+import { applyBindings, BindCache, findBindings, isSameBinding } from './BindUtil';
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
-import { fancyEquals, FancyTerm } from './FancyUtil';
+import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import { applyClauseOverlap, ClauseOverlap, findOverlappingClause } from './OverlapUtil';
 import { stringifyClause } from './ParseUtil';
@@ -9,19 +9,28 @@ import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot }
 
 const logger = getLogger('Reason');
 
+export type ReasonCaches = {
+  bindingCache: BindCache,
+  overlapCache: ClauseOverlap[],
+}
+
 export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
-  const bindingCache: Record<string, FancyTerm>[] = [];
   const overlapCache: ClauseOverlap[] = [];
+  const bindingCache: BindCache = {
+    clauses: new WeakSet(),
+    quads: new WeakSet(),
+    bindings: [],
+  } ;
   let count = 0;
 
-  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, answerClauses, bindingCache, overlapCache)) {
+  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, answerClauses, { bindingCache, overlapCache })) {
     ++count;
     logger.debug(`COMPLETED STEP ${count}`);
   }
   logger.debug('FINISHED');
 }
 
-export function reasonStep(root: RootClause, answerClauses: Clause[], bindingCache: Record<string, FancyTerm>[], overlapCache: ClauseOverlap[]): boolean {
+export function reasonStep(root: RootClause, answerClauses: Clause[], caches: ReasonCaches): boolean {
   let change = false;
   while (simplifyRoot(root)) {
     logger.debug(`Simplified root to ${stringifyClause(root)}`);
@@ -32,13 +41,9 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], bindingCac
     return false;
   }
 
-  for (const binding of findBindings(root)) {
+  for (const binding of findBindings(root, caches.bindingCache)) {
     let newClauses: Clause[] = [];
-    if (bindingCache.some((cached): boolean => isSameBinding(binding, cached))) {
-      continue;
-    }
     logger.debug(`Applying binding ${inspect(binding)}`);
-    bindingCache.push(binding);
     for (const clause of root.clauses) {
       const bound = applyBindings(clause, binding);
       if (bound) {
@@ -61,10 +66,10 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], bindingCac
 
   let newClauses: Clause[] = [];
   for (const overlap of findOverlappingClause(root)) {
-    if (overlapCache.some((cached): boolean => isSameOverlap(overlap, cached))) {
+    if (caches.overlapCache.some((cached): boolean => isSameOverlap(overlap, cached))) {
       continue;
     }
-    overlapCache.push(overlap);
+    caches.overlapCache.push(overlap);
     const overlapClauses = applyClauseOverlap(overlap);
     const leftCount = countQuads(overlap.left.clause);
     const rightCount = countQuads(overlap.right.clause);
@@ -108,25 +113,6 @@ export function handleNewClause(root: RootClause, clause: Clause, newClauses: Cl
   }
   logger.debug(`Storing new clause: ${stringifyClause(simplified)}`);
   newClauses.push(simplified);
-  return true;
-}
-
-export function isSameBinding(left: Record<string, FancyTerm>, right: Record<string, FancyTerm>): boolean {
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) {
-    return false;
-  }
-  leftKeys.sort();
-  rightKeys.sort();
-  for (const [ idx, key ] of leftKeys.entries()) {
-    if (key !== rightKeys[idx]) {
-      return false;
-    }
-    if (!fancyEquals(left[key], right[key])) {
-      return false;
-    }
-  }
   return true;
 }
 
