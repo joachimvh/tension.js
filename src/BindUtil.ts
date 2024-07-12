@@ -28,7 +28,6 @@ export function* findClauseBindings(root: RootClause, clause: Clause): IterableI
   }
 }
 
-// TODO: left one is the one that should have the universals
 // TODO: returns undefined if no binding is possible, returns {} if a binding is possible but no mappings are needed
 export function getBinding(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): Record<string, FancyTerm> | undefined {
   // TODO: might have to differentiate between no mapping and impossible mapping?
@@ -47,13 +46,22 @@ export function getBinding(left: FancyQuad, right: FancyQuad, quantifiers: Recor
 export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: Record<string, number>): Record<string, FancyTerm> | undefined {
   const result: Record<string, FancyTerm> = {};
 
-  if (left.termType === 'Graph' || left.termType === 'List') {
+  if (isUniversal(left, quantifiers)) {
+    if (result[left.value] && !fancyEquals(result[left.value], right)) {
+      return;
+    }
+    result[left.value] = right;
+  } else if (isUniversal(right, quantifiers)) {
+    if (result[right.value] && !fancyEquals(result[right.value], left)) {
+      return;
+    }
+    result[right.value] = left;
+  } else if (left.termType === 'Graph' || left.termType === 'List') {
     if (right.termType !== left.termType) {
       return;
     }
     const callback = left.termType === 'Graph' ? getBinding : getTermBinding;
     for (let i = 0; i < left.value.length; ++i) {
-      // TODO: check for conflicting bindings?
       const partial = callback(left.value[i] as any, right.value[i] as any, quantifiers);
       if (!partial) {
         return;
@@ -61,10 +69,6 @@ export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: R
       Object.assign(result, partial);
     }
     return result;
-  }
-
-  if (isUniversal(left, quantifiers)) {
-    result[left.value] = right;
   } else if (!fancyEquals(left, right)) {
     return;
   }

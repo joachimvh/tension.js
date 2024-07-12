@@ -249,8 +249,7 @@ export function findQuadOverlap(left: { clause: Clause; value: Clause | FancyQua
   }
 
   // Both are quads
-  // TODO: should reuse binding functions
-  const binding = getOverlapBinding(left.value, right.value, quantifiers);
+  const binding = getBinding(left.value, right.value, quantifiers);
   if (binding) {
     return {
       left: { clause: left.clause, remove: left.value },
@@ -259,24 +258,6 @@ export function findQuadOverlap(left: { clause: Clause; value: Clause | FancyQua
       binding,
     };
   }
-}
-
-// TODO: is it possible this returns conflicting bindings for the same clauses?
-//       -> not a problem but only use those that do not conflict though
-export function getOverlapBinding(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): Record<string, FancyTerm> | undefined {
-  let bindings: Record<string, FancyTerm> = {};
-  for (const pos of QUAD_POSITIONS) {
-    const leftTerm = left[pos];
-    const rightTerm = right[pos];
-    if (isUniversal(leftTerm, quantifiers)) {
-      bindings[leftTerm.value] = rightTerm;
-    } else if (isUniversal(rightTerm, quantifiers)) {
-      bindings[rightTerm.value] = leftTerm;
-    } else if (!fancyEquals(leftTerm, rightTerm)) {
-      return;
-    }
-  }
-  return bindings;
 }
 
 export function isClause(value: Clause | FancyQuad): value is Clause {
