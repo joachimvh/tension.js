@@ -145,11 +145,6 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
 
     const val = input[key];
     if (key === '@type') {
-      if (!val) {
-        // TODO: workaround for bug in parser that sets types to `null` sometimes
-        //       example: https://github.com/eyereasoner/rdfsurfaces-tests/blob/main/test/pure/rdfs.n3s
-        continue;
-      }
       if (newSubject.termType === 'Literal') {
         // Type was already parsed as datatype when parsing term
         continue;
