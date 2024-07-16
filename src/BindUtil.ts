@@ -1,7 +1,10 @@
 import { Clause, createClause, RootClause } from './ClauseUtil';
 import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
-import { QUAD_POSITIONS } from './ParseUtil';
+import { getLogger } from './LogUtil';
+import { QUAD_POSITIONS, stringifyClause } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
+
+const logger = getLogger('Bind');
 
 export type Binding = Record<string, FancyTerm>;
 
@@ -21,6 +24,7 @@ export function* findBindings(root: RootClause, cache?: BindCache): IterableIter
         continue;
       }
       yield binding;
+      cache.bindings.push(binding);
     }
   }
   // Only add root quads after having checked with the clauses
@@ -95,7 +99,7 @@ export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: R
     }
     result[right.value] = left;
   } else if (left.termType === 'Graph' || left.termType === 'List') {
-    if (right.termType !== left.termType) {
+    if (left.termType !== right.termType || left.value.length !== right.value.length) {
       return;
     }
     const callback = left.termType === 'Graph' ? getBinding : getTermBinding;

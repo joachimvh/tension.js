@@ -1,29 +1,34 @@
 import { inspect } from 'node:util';
-import { applyBindings, BindCache, findBindings, isSameBinding } from './BindUtil';
+import { applyBindings, applyBindingsToQuad, BindCache, findBindings } from './BindUtil';
+import { BuiltinCache, generateBuiltinResultClauses } from './BuiltinUtil';
 import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
 import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { applyClauseOverlap, ClauseOverlap, findOverlappingClause, OverlapCache } from './OverlapUtil';
-import { stringifyClause } from './ParseUtil';
+import { applyClauseOverlap, findOverlappingClause, OverlapCache } from './OverlapUtil';
+import { stringifyClause, stringifyQuad } from './ParseUtil';
 import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
 const logger = getLogger('Reason');
 
 export type ReasonCaches = {
+  builtinCache: BuiltinCache,
   bindingCache: BindCache,
   overlapCache: OverlapCache,
 }
 
 export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
-  const overlapCache: OverlapCache = new WeakMap();
-  const bindingCache: BindCache = {
-    clauses: new WeakSet(),
-    quads: new WeakSet(),
-    bindings: [],
-  } ;
+  const cache: ReasonCaches = {
+    builtinCache: new WeakSet(),
+    bindingCache: {
+      clauses: new WeakSet(),
+      quads: new WeakSet(),
+      bindings: [],
+    },
+    overlapCache: new WeakMap(),
+  }
   let count = 0;
 
-  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, answerClauses, { bindingCache, overlapCache })) {
+  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, answerClauses, cache)) {
     ++count;
     logger.debug(`COMPLETED STEP ${count}`);
   }
@@ -41,8 +46,19 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
     return false;
   }
 
+  let newClauses: Clause[] = [];
+  const removeSet = new Set<number>();
+  for (const { idx, clause: builtinClause } of generateBuiltinResultClauses(root, caches.builtinCache)) {
+    change = handleNewClause(root, builtinClause, newClauses) || change;
+    removeSet.add(idx);
+  }
+  if (removeSet.size > 0) {
+    root.clauses = root.clauses.filter((child, idx): boolean => !removeSet.has(idx));
+  }
+  root.clauses.push(...newClauses);
+
   for (const binding of findBindings(root, caches.bindingCache)) {
-    let newClauses: Clause[] = [];
+    newClauses = [];
     logger.debug(`Applying binding ${inspect(binding)}`);
     for (const clause of root.clauses) {
       const bound = applyBindings(clause, binding);
@@ -53,6 +69,17 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
     // Pushing every iteration here so next bindings are applied to results generated here.
     // Can not wait for next step because of binding cache, alternative would be to not have that cache.
     root.clauses.push(...newClauses);
+
+    // TODO: better way to check if a quad should be checked (per quad list of blank nodes in it?)
+    for (const side of [ 'positive', 'negative' ] as const) {
+      for (const quad of root[side]) {
+        const boundQuad = applyBindingsToQuad(quad, binding);
+        if (boundQuad && !root[side].some((oldQuad): boolean => fancyEquals(boundQuad, oldQuad))) {
+          root[side].push(boundQuad);
+          logger.info(`Deduced ${stringifyQuad(boundQuad, side === 'negative')}`);
+        }
+      }
+    }
   }
 
   while (simplifyRoot(root)) {
@@ -64,7 +91,7 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
     return false;
   }
 
-  let newClauses: Clause[] = [];
+  newClauses = [];
   for (const overlap of findOverlappingClause(root, caches.overlapCache)) {
     const overlapClauses = applyClauseOverlap(overlap);
     const leftCount = countQuads(overlap.left.clause);

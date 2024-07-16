@@ -1,4 +1,4 @@
-import { Term } from '@rdfjs/types';
+import { Literal, Term } from '@rdfjs/types';
 import { QUAD_POSITIONS } from './ParseUtil';
 
 export type FancyQuad = {
@@ -54,6 +54,10 @@ export function fancyEquals(left: FancyQuad | FancyTerm, right: FancyQuad | Fanc
 
   if (left.termType === 'Graph' || left.termType === 'List') {
     return left.value.length === right.value.length && left.value.every((child, idx): boolean => fancyEquals(child, (right as Graph | List).value[idx]));
+  }
+
+  if (left.termType === 'Literal') {
+    return left.value === right.value && left.datatype.value === (right as Literal).datatype.value && left.language === (right as Literal).language;
   }
 
   return left.value === right.value;

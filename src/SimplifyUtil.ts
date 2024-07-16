@@ -1,4 +1,5 @@
 import { BlankNode } from '@rdfjs/types';
+import { handleBuiltinCheck } from './BuiltinUtil';
 import { Clause, createClause, RootClause } from './ClauseUtil';
 import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
@@ -104,6 +105,7 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
 
   // Check if we have a tautology
   if (isTautology(root, clause)) {
+    logger.debug(`${stringifyClause(clause)} is a tautology so can be ignored`);
     return true;
   }
 
@@ -113,6 +115,21 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     const removeIdx = new Set<number>();
     const neg = side === 'negative';
     for (const [idxA, quadA] of clauseQuads.entries()) {
+      // TODO: similar to simplifyLevel2 (like many parts of this function tbh)
+      const builtinResult = handleBuiltinCheck({ root, clause, quad: quadA });
+      if (typeof builtinResult === 'boolean') {
+        if (builtinResult === (side === 'positive')) {
+          // true
+          logger.debug(`${stringifyQuad(quadA, side === 'negative')} is true so ${stringifyClause(clause)} can be ignored`);
+          return true;
+        } else {
+          // false
+          removeIdx.add(idxA);
+          logger.debug(`${stringifyQuad(quadA, side === 'negative')} is false so can be removed from disjunction (builtin)`);
+          continue;
+        }
+      }
+
       // Remove "duplicates"
       for (const [idxB, quadB] of clauseQuads.entries()) {
         // TODO: this prevents removing both B in A || B || B
@@ -185,6 +202,21 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
     const clauseQuads = clause[side];
     const removeIdx = new Set<number>();
     for (const [idxA, quadA] of clauseQuads.entries()) {
+      // Check builtins
+      const builtinResult = handleBuiltinCheck({ root, clause, quad: quadA });
+      if (typeof builtinResult === 'boolean') {
+        if (builtinResult === (side === 'positive')) {
+          // true
+          removeIdx.add(idxA);
+          logger.debug(`${stringifyQuad(quadA, side === 'negative')} is true so can be removed from conjunction (builtin)`);
+          continue;
+        } else {
+          // false
+          logger.debug(`${stringifyClause(clause)} is a contradiction (builtin)`);
+          return false;
+        }
+      }
+
       // Remove "duplicates"
       for (const [idxB, quadB] of clauseQuads.entries()) {
         if (idxA === idxB || removeIdx.has(idxB)) {

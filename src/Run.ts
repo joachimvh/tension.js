@@ -1,6 +1,7 @@
 import { Command, Option } from 'commander';
 import { readFileSync } from 'fs';
 import { inspect } from 'node:util';
+import { loadBuiltins } from './BuiltinUtil';
 import { findAnswerClauses, pullGraffitiUp, removeDuplicateBlankNodes, toClause } from './ClauseUtil';
 import { getLogger, LOG_LEVELS, setLogLevel } from './LogUtil';
 import { parseRoot, stringifyClause, stringifyQuad } from './ParseUtil';
@@ -54,6 +55,7 @@ export async function run(args: string[]): Promise<void> {
   const parsed = parseRoot(n3);
   const formula = pullGraffitiUp(removeDuplicateBlankNodes(parsed));
   const root = toClause(formula);
+  await loadBuiltins();
 
   let answerClauses = opts.ignoreAnswer ? [] : findAnswerClauses(formula);
 

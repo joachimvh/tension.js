@@ -20,6 +20,7 @@
     "@rdfjs/types": "^1.1.0",
     "@types/n3": "^1.16.4",
     "commander": "^12.1.0",
+    "iso8601-duration": "^2.1.2",
     "n3": "^1.17.3",
     "n3-parser.js": "^0.1.1",
     "rdf-string": "^1.6.3",

@@ -19,7 +19,15 @@ export type NegativeSurface = {
 }
 
 const ON_NEGATIVE_SURFACE = 'http://www.w3.org/2000/10/swap/log#onNegativeSurface';
+const ON_NEGATIVE_COMPONENT_SURFACE = 'http://www.w3.org/2000/10/swap/log#onNegativeComponentSurface';
+const ON_NEGATIVE_QUESTION_SURFACE = 'http://www.w3.org/2000/10/swap/log#onNegativeQuestionSurface';
 const ON_NEGATIVE_ANSWER_SURFACE = 'http://www.w3.org/2000/10/swap/log#onNegativeAnswerSurface';
+const NEGATIVE_SURFACE_PREDICATES = [
+  ON_NEGATIVE_SURFACE,
+  ON_NEGATIVE_COMPONENT_SURFACE,
+  ON_NEGATIVE_QUESTION_SURFACE,
+  ON_NEGATIVE_ANSWER_SURFACE
+] as const;
 const RDF_TYPE = DF.namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
 
 export const QUAD_POSITIONS = [ 'subject', 'predicate', 'object' ] as const;
@@ -58,12 +66,22 @@ function parseFormula(graph: Record<string, unknown>, prefixes: Record<string, s
 
 function parseEntry(entry: Record<string, unknown>, prefixes: Record<string, string>): FancyQuad[] | NegativeSurface {
   removePrefixes(entry, prefixes);
-  if ('@list' in entry && ((ON_NEGATIVE_SURFACE in entry) || (ON_NEGATIVE_ANSWER_SURFACE in entry))) {
+  if ('@list' in entry) {
     // Negative surfaces
-    const graffiti = parseGraffiti(entry['@list'] as object[]);
-    const formula = parseFormula(entry[ON_NEGATIVE_SURFACE] as Record<string, unknown> || entry[ON_NEGATIVE_ANSWER_SURFACE], prefixes);
-    return { graffiti, formula: formula as Formula, answer: ON_NEGATIVE_ANSWER_SURFACE in entry};
+    let surfacePred: string | undefined;
+    for (const pred of NEGATIVE_SURFACE_PREDICATES) {
+      if (pred in entry) {
+        surfacePred = pred;
+        break;
+      }
+    }
+    if (surfacePred) {
+      const graffiti = parseGraffiti(entry['@list'] as object[]);
+      const formula = parseFormula(entry[surfacePred] as Record<string, unknown>, prefixes);
+      return { graffiti, formula: formula as Formula, answer: ON_NEGATIVE_ANSWER_SURFACE in entry};
+    }
   }
+
   // Data
   return parseQuads(entry, prefixes);
 }
@@ -121,7 +139,7 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
 
   // For each field: either it's a new object with an @id, so recurse (unless only field), it's a string, so parse, or could be complex value object
   for (const key of Object.keys(input)) {
-    if (key === '@id') {
+    if (key === '@id' || key === '@value' || key === '@list') {
       continue;
     }
 
@@ -130,6 +148,10 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
       if (!val) {
         // TODO: workaround for bug in parser that sets types to `null` sometimes
         //       example: https://github.com/eyereasoner/rdfsurfaces-tests/blob/main/test/pure/rdfs.n3s
+        continue;
+      }
+      if (newSubject.termType === 'Literal') {
+        // Type was already parsed as datatype when parsing term
         continue;
       }
       if (Array.isArray(val)) {
@@ -153,8 +175,12 @@ function createFancyQuad(subject: FancyTerm, predicate: FancyTerm, object: Fancy
 
 // TODO: no way to differentiate between literals and named nodes
 function parseTerm(input: unknown, prefixes: Record<string, string>): FancyTerm {
-  if (typeof input === 'string' || typeof input === 'number') {
+  if (typeof input === 'string') {
     return DF.literal(input);
+  }
+
+  if (typeof input === 'number') {
+    return DF.literal(`${input}`, DF.namedNode('http://www.w3.org/2001/XMLSchema#number'));
   }
 
   if (typeof input === 'boolean') {
@@ -165,6 +191,15 @@ function parseTerm(input: unknown, prefixes: Record<string, string>): FancyTerm 
     if ('@id' in input!) {
       const id = input['@id'] as string;
       return id.startsWith('_:') ? DF.blankNode(id.slice(2)) : DF.namedNode(id);
+    }
+    if ('@value' in input!) {
+      if ('@type' in input) {
+        return DF.literal(input['@value'] as string, DF.namedNode(input['@type'] as string));
+      }
+      if ('@language' in input) {
+        return DF.literal(input['@value'] as string, input['@language'] as string);
+      }
+      return parseTerm(input['@value'], prefixes);
     }
     if ('@list' in input!) {
       return {
@@ -180,7 +215,7 @@ function parseTerm(input: unknown, prefixes: Record<string, string>): FancyTerm 
     }
   }
 
-  throw new Error(`Unable to parse input into term: ${input}`);
+  throw new Error(`Unable to parse input into term: ${JSON.stringify(input)}`);
 }
 
 // TODO: pretty option with indentation and stuff
@@ -213,6 +248,10 @@ export function stringifyTerm(term: FancyTerm): string {
   if (term.termType === 'Literal') {
     if (term.datatype.value === 'http://www.w3.org/2001/XMLSchema#boolean' || term.datatype.value === 'http://www.w3.org/2001/XMLSchema#number') {
       return term.value;
+    } else if (term.language) {
+      return `"${term.value}"@${term.language}`
+    } else if (term.datatype.value !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `"${term.value}"^^<${term.datatype.value}>`
     }
     return `"${term.value}"`;
   }
