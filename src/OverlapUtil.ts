@@ -1,13 +1,10 @@
-import { applyBindingsToQuads, getBinding } from './BindUtil';
+import { applyBindings, applyBindingsToQuads, getBinding } from './BindUtil';
 import { Clause, createClause, mergeData, RootClause } from './ClauseUtil';
 import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
-import { isUniversal } from './SimplifyUtil';
+import { stringifyClause } from './ParseUtil';
 
 const logger = getLogger('Overlap');
-
-// TODO: could limit this to 2 children each as otherwise we get bigger results anyway
 
 export type ClauseOverlap = {
   left: {
@@ -74,16 +71,14 @@ export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {
   // Both results are the same if both match on a disjunction triple
   let results: Clause[] = [];
   // TODO: we might want to do this after the simplify step though...
-  if (overlap.left.removeClause || overlap.right.removeClause) {
-    if (overlap.left.removeClause && overlap.right.removeClause) {
-      results.push(applySubClauseOverlap(overlap, true), applySubClauseOverlap(overlap, false));
-    } else {
-      // TODO: still only need to generate one here, as the other one would be a simplified version
-      //       e.g., A || B || C and (-A && D && E) || F || G
-      //             generates B || C || F || G and (B && D && E) || (C && D && E) || F || G
-      //             the latter one contains all the information of the first
-      results.push(overlap.left.removeClause ? applySubClauseOverlap(overlap, true) : applySubClauseOverlap(overlap, false));
-    }
+  if (overlap.left.removeClause && overlap.right.removeClause) {
+    results.push(applySubClauseOverlap(overlap, true), applySubClauseOverlap(overlap, false));
+  } else if (overlap.left.removeClause || overlap.right.removeClause) {
+    // TODO: still only need to generate one here, as the other one would be a simplified version
+    //       e.g., A || B || C and (-A && D && E) || F || G
+    //             generates B || C || F || G and (B && D && E) || (C && D && E) || F || G
+    //             the latter one contains all the information of the first
+    results.push(overlap.left.removeClause ? applySubClauseOverlap(overlap, true) : applySubClauseOverlap(overlap, false));
   } else {
     results.push(applyTripleClauseOverlap(overlap, true));
   }
@@ -103,13 +98,13 @@ export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Cl
   }
 
   // In the clause where we replace a triple: the triples that have to remain.
-  const crossPositive = mergeData(removeClause.positive);
-  const crossNegative = mergeData(removeClause.negative);
+  const crossPositive = [ ...removeClause.positive ];
+  const crossNegative = [ ...removeClause.negative ];
   removeQuad(((overlap.leftPositive === left) ? crossPositive : crossNegative), overlap[side].remove);
 
   // In the clause that will be used as injection: the parts that are not removed.
-  const otherPositive = mergeData(overlap[otherSide].clause.positive);
-  const otherNegative = mergeData(overlap[otherSide].clause.negative);
+  const otherPositive = [ ...overlap[otherSide].clause.positive ];
+  const otherNegative = [ ...overlap[otherSide].clause.negative ];
   const otherClauses: Clause[] = [
     ...(overlap[otherSide].removeClause ? overlap[otherSide].clause.clauses.filter((child): boolean => child !== overlap[otherSide].removeClause) : overlap[otherSide].clause.clauses),
   ];
@@ -129,12 +124,31 @@ export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Cl
     finalClauses.push(createClause({ conjunction: true, positive: mergeData(crossPositive, clause.positive), negative: mergeData(crossNegative, clause.negative) }));
   }
 
-  return createClause({
+   let result = createClause({
     conjunction: false,
     positive: overlap[side].clause.positive,
     negative: overlap[side].clause.negative,
     clauses: finalClauses,
   });
+
+  result = applyBindings(result, overlap.binding) ?? result;
+
+  // TODO: it's possible that the removeClause contains even more information about things that can be removed
+  //       e.g., A || (B && D) and (-A && -B) || C. Standard solution would be to generate (B && D) || C, but actually this can be simplified to C
+  const otherRemoveClause = overlap[otherSide].removeClause;
+  if (otherRemoveClause) {
+    for (const quad of applyBindingsToQuads(otherRemoveClause.positive, overlap.binding) ?? otherRemoveClause.positive) {
+      removeQuad(result.negative, quad);
+      // TODO: ugly nesting and so on
+      result.clauses = result.clauses.filter((clause): boolean => !clause.negative.some((child): boolean => fancyEquals(child, quad)));
+    }
+    for (const quad of applyBindingsToQuads(otherRemoveClause.negative, overlap.binding) ?? otherRemoveClause.negative) {
+      removeQuad(result.positive, quad);
+      // TODO: ugly nesting and so on
+      result.clauses = result.clauses.filter((clause): boolean => !clause.positive.some((child): boolean => fancyEquals(child, quad)));
+    }
+  }
+  return result;
 }
 
 // TODO: it's impossible for this function to generate a clause that is bigger than the sum of its parents
@@ -142,8 +156,8 @@ export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Cl
 export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean): Clause {
   const side = left ? 'left' : 'right';
   const otherSide = left ? 'right' : 'left';
-  if (overlap[side].removeClause) {
-    throw new Error('This function should not be called if `removeClause` is not defined for this side.');
+  if (overlap.left.removeClause || overlap.right.removeClause) {
+    throw new Error('This function should not be called if `removeClause` is defined for any side.');
   }
 
   // The remaining triples of the initial clause
@@ -154,16 +168,12 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   // The remaining triples/clauses of the other clause
   const otherPositive = mergeData(overlap[otherSide].clause.positive);
   const otherNegative = mergeData(overlap[otherSide].clause.negative);
-  if (!overlap[otherSide].removeClause) {
-    removeQuad(((overlap.leftPositive === left) ? otherNegative : otherPositive), overlap[otherSide].remove);
-  }
+  removeQuad(((overlap.leftPositive === left) ? otherNegative : otherPositive), overlap[otherSide].remove);
 
   // The combined clauses of both sides
   const clauses: Clause[] = [
     ...overlap[side].clause.clauses,
-    ...(overlap[otherSide].removeClause ?
-      overlap[otherSide].clause.clauses.filter((child): boolean => child !== overlap[otherSide].removeClause) :
-      overlap[otherSide].clause.clauses),
+    ...overlap[otherSide].clause.clauses,
   ];
 
   // Generate the triples that will be in the new clause.
@@ -171,31 +181,22 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
   const mergedPositive = mergeData(positive, otherPositive);
   const mergedNegative = mergeData(negative, otherNegative);
 
-  const result = createClause({
+  let result = createClause({
     conjunction: false,
-    positive: applyBindingsToQuads(mergedPositive, overlap.binding) ?? mergedPositive,
-    negative: applyBindingsToQuads(mergedNegative, overlap.binding) ?? mergedNegative,
+    positive: mergedPositive,
+    negative: mergedNegative,
     clauses,
   });
-  // TODO: doing this after merge might be bad I think, need to find example though
-  // TODO: it's possible that the removeClause contains even more information about things that can be removed
-  //       e.g., A || B and (-A && -B) || C. Standard solution would be to generate B || C, but actually this can be simplified to C
-  //       what about (A && D) || B? -> same thing, result is still C
-  const removeClause = overlap[otherSide].removeClause;
-  if (removeClause) {
-    for (const quad of applyBindingsToQuads(removeClause.positive, overlap.binding) ?? removeClause.positive) {
-      removeQuad(result.negative, quad);
-    }
-    for (const quad of applyBindingsToQuads(removeClause.negative, overlap.binding) ?? removeClause.negative) {
-      removeQuad(result.positive, quad);
-    }
-  }
+  result = applyBindings(result, overlap.binding) ?? result;
 
   return result;
 }
 
 export function removeQuad(quads: FancyQuad[], quad: FancyQuad): void {
-  quads.splice(quads.indexOf(quad), 1);
+  const idx = quads.indexOf(quad);
+  if (idx >= 0) {
+    quads.splice(quads.indexOf(quad), 1);
+  }
 }
 
 // TODO: by stopping at the first hit we might miss other options (especially if we compare clause subsets)
