@@ -21,7 +21,7 @@ export type Graph = {
   termType: 'Graph',
   value: FancyQuad[],
 }
-// Array indicates a list
+
 export type FancyTerm = Term | Graph | List;
 
 export function isSimpleTerm(input: FancyTerm): input is Term {
