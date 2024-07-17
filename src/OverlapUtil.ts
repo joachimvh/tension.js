@@ -136,16 +136,20 @@ export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Cl
   // TODO: it's possible that the removeClause contains even more information about things that can be removed
   //       e.g., A || (B && D) and (-A && -B) || C. Standard solution would be to generate (B && D) || C, but actually this can be simplified to C
   const otherRemoveClause = overlap[otherSide].removeClause;
+  const removeClauseIdx = new Set<number>();
   if (otherRemoveClause) {
     for (const quad of applyBindingsToQuads(otherRemoveClause.positive, overlap.binding) ?? otherRemoveClause.positive) {
       removeQuad(result.negative, quad);
-      // TODO: ugly nesting and so on
-      result.clauses = result.clauses.filter((clause): boolean => !clause.negative.some((child): boolean => fancyEquals(child, quad)));
+      const idx = result.clauses.findIndex((clause): boolean => clause.negative.some((child): boolean => fancyEquals(child, quad)));
+      removeClauseIdx.add(idx);
     }
     for (const quad of applyBindingsToQuads(otherRemoveClause.negative, overlap.binding) ?? otherRemoveClause.negative) {
       removeQuad(result.positive, quad);
-      // TODO: ugly nesting and so on
-      result.clauses = result.clauses.filter((clause): boolean => !clause.positive.some((child): boolean => fancyEquals(child, quad)));
+      const idx = result.clauses.findIndex((clause): boolean => clause.positive.some((child): boolean => fancyEquals(child, quad)));
+      removeClauseIdx.add(idx);
+    }
+    if (removeClauseIdx.size > 0) {
+      result.clauses = result.clauses.filter((clause, idx): boolean => !removeClauseIdx.has(idx));
     }
   }
   return result;
