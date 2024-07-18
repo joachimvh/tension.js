@@ -93,7 +93,6 @@ so `f(A) || (f(B) && f(C))` and `g(A) || (-f(B) && g(C))` will result in two new
 Overlap can also be done with universals present.
 `∀x: f(x) || g(x)` and `-f(A) || g(B)` will generate `g(A) || g(B)`.
 
-
 As a pruning strategy, overlap results that have more quads than their parents combined,
 will not be stored.
 

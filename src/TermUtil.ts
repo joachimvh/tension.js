@@ -1,6 +1,6 @@
 import { parse, toSeconds } from 'iso8601-duration';
 import { DataFactory } from 'n3';
-import { FancyTerm } from './FancyUtil';
+import type { FancyTerm } from './FancyUtil';
 
 export const XSD_DATETIME = 'http://www.w3.org/2001/XMLSchema#dateTime';
 export const XSD_DATE = 'http://www.w3.org/2001/XMLSchema#date';
@@ -28,8 +28,8 @@ export function compareLiterals(left: FancyTerm, right: FancyTerm): number | und
   if (Number.isNaN(left.value) || Number.isNaN(right.value)) {
     return;
   }
-  const leftNumber = Number.parseInt(left.value);
-  const rightNumber = Number.parseInt(right.value);
+  const leftNumber = Number.parseInt(left.value, 10);
+  const rightNumber = Number.parseInt(right.value, 10);
   return leftNumber - rightNumber;
 }
 
@@ -40,7 +40,6 @@ export function compareLiterals(left: FancyTerm, right: FancyTerm): number | und
 //       date - duration = date
 //       duration - date = error
 //       duration - duration = error
-
 
 // TODO: can throw errors so should be wrapped
 export function performSum(left: FancyTerm, right: FancyTerm, minus: boolean): FancyTerm | undefined {
@@ -59,11 +58,11 @@ export function performSum(left: FancyTerm, right: FancyTerm, minus: boolean): F
       if (diff < 0) {
         return;
       }
-      const duration = `PT${Math.floor(diff/1000)}S`;
+      const duration = `PT${Math.floor(diff / 1000)}S`;
       return DataFactory.literal(duration, DataFactory.namedNode(XSD_DURATION));
     }
     if (right.datatype.value === XSD_DURATION) {
-      const rightMilliSeconds = toSeconds(parse(right.value))*1000;
+      const rightMilliSeconds = toSeconds(parse(right.value)) * 1000;
       const result = new Date(minus ? leftDate.getTime() - rightMilliSeconds : leftDate.getTime() + rightMilliSeconds);
       return DataFactory.literal(result.toISOString(), XSD_DATETIME);
     }
@@ -93,7 +92,7 @@ export function performSum(left: FancyTerm, right: FancyTerm, minus: boolean): F
   if (Number.isNaN(left.value) || Number.isNaN(right.value)) {
     return;
   }
-  const leftNumber = Number.parseInt(left.value);
-  const rightNumber = Number.parseInt(right.value);
+  const leftNumber = Number.parseInt(left.value, 10);
+  const rightNumber = Number.parseInt(right.value, 10);
   return DataFactory.literal(minus ? leftNumber - rightNumber : leftNumber + rightNumber);
 }

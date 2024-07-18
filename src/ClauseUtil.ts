@@ -1,14 +1,16 @@
-import { BlankNode } from '@rdfjs/types';
+import type { BlankNode } from '@rdfjs/types';
 import { DataFactory } from 'n3';
-import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
-import { Formula, NegativeSurface, QUAD_POSITIONS } from './ParseUtil';
+import type { FancyQuad, FancyTerm } from './FancyUtil';
+import { fancyEquals } from './FancyUtil';
+import type { Formula, NegativeSurface } from './ParseUtil';
+import { QUAD_POSITIONS } from './ParseUtil';
 
 export type Clause = {
   conjunction: boolean;
   positive: FancyQuad[];
   negative: FancyQuad[];
   clauses: Clause[];
-}
+};
 
 export type LeafClause = Clause & {
   clauses: [];
@@ -25,14 +27,18 @@ export function createClause(options: Partial<Clause> & { conjunction: boolean }
     positive: options.positive ?? [],
     negative: options.negative ?? [],
     clauses: options.clauses ?? [],
-  }
+  };
 }
 
-export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> = new Set(), map: Record<string, BlankNode> = {}): Formula {
+export function removeDuplicateBlankNodes(
+  formula: Formula,
+  names: Set<string> = new Set(),
+  map: Record<string, BlankNode> = {},
+): Formula {
   const newQuads: FancyQuad[] = [];
   let changed = false;
   for (const quad of formula.data) {
-    let newQuad = removeDuplicateQuadBlankNodes(quad, names, map);
+    const newQuad = removeDuplicateQuadBlankNodes(quad, names, map);
     newQuads.push(newQuad ?? quad);
     changed = changed || Boolean(newQuad);
   }
@@ -58,15 +64,19 @@ export function removeDuplicateBlankNodes(formula: Formula, names: Set<string> =
         names.add(node.value);
       }
     }
-    removeDuplicateBlankNodes(surface.formula, names, {...map, ...newMap});
+    removeDuplicateBlankNodes(surface.formula, names, { ...map, ...newMap });
   }
 
   return formula;
 }
 
-export function removeDuplicateQuadBlankNodes(quad: FancyQuad, names: Set<string>, map: Record<string, BlankNode>): FancyQuad | undefined {
+export function removeDuplicateQuadBlankNodes(
+  quad: FancyQuad,
+  names: Set<string>,
+  map: Record<string, BlankNode>,
+): FancyQuad | undefined {
   let changedQuad = false;
-  let newQuad: Partial<FancyQuad> = {};
+  const newQuad: Partial<FancyQuad> = {};
   for (const pos of QUAD_POSITIONS) {
     const term = removeDuplicateTermBlankNodes(quad[pos], names, map);
     if (term) {
@@ -82,7 +92,11 @@ export function removeDuplicateQuadBlankNodes(quad: FancyQuad, names: Set<string
   }
 }
 
-export function removeDuplicateTermBlankNodes(term: FancyTerm, names: Set<string>, map: Record<string, BlankNode>): FancyTerm | undefined {
+export function removeDuplicateTermBlankNodes(
+  term: FancyTerm,
+  names: Set<string>,
+  map: Record<string, BlankNode>,
+): FancyTerm | undefined {
   if (term.termType === 'BlankNode') {
     // Could have blank nodes not in graffiti, also need to account for those
     names.add(term.value);
@@ -91,10 +105,11 @@ export function removeDuplicateTermBlankNodes(term: FancyTerm, names: Set<string
 
   if (term.termType === 'Graph' || term.termType === 'List') {
     let changed = false;
-    let result: (FancyQuad | FancyTerm)[] = [];
-    const callback = term.termType === 'Graph' ? removeDuplicateQuadBlankNodes : removeDuplicateTermBlankNodes;
+    const result: (FancyQuad | FancyTerm)[] = [];
+    const remove = term.termType === 'Graph' ? removeDuplicateQuadBlankNodes : removeDuplicateTermBlankNodes;
     for (const child of term.value) {
-      const childResult = callback(child as any, names, map);
+      // Schrodinger's Fancy
+      const childResult = remove(child as FancyQuad & FancyTerm, names, map);
       if (childResult) {
         changed = true;
         result.push(childResult);
@@ -102,7 +117,7 @@ export function removeDuplicateTermBlankNodes(term: FancyTerm, names: Set<string
         result.push(child);
       }
     }
-    return changed ? { ...term, value: result as any } : undefined;
+    return changed ? { ...term, value: result as (FancyQuad & FancyTerm)[] } : undefined;
   }
 }
 
@@ -135,7 +150,7 @@ export function toClause(formula: Formula): RootClause {
   const rootClause: RootClause = {
     ...createClause({ conjunction: true, positive: formula.data }),
     quantifiers: {},
-  }
+  };
   for (const surface of formula.surfaces) {
     rootClause.clauses.push(surfaceToClause(surface, rootClause.quantifiers));
   }
@@ -266,10 +281,16 @@ export function isSameClause(left: Clause, right: Clause): boolean {
     }
   }
 
-  return left.clauses.every((leftClause): boolean => right.clauses.some((rightClause): boolean => isSameClause(leftClause, rightClause)));
+  return left.clauses.every((leftClause): boolean =>
+    right.clauses.some((rightClause): boolean => isSameClause(leftClause, rightClause)));
 }
 
-export function isDisjunctionSubset(left: Clause, right: Clause, quantifiers: Record<string, number>, blankMap: Record<string, string> = {}): boolean {
+export function isDisjunctionSubset(
+  left: Clause,
+  right: Clause,
+  quantifiers: Record<string, number>,
+  blankMap: Record<string, string> = {},
+): boolean {
   // Although you could see f(A) as being a subset of ∀x: f(x),
   // we still need f(A) to make our reasoning steps work,
   // which is why we only check equality here.
@@ -279,7 +300,12 @@ export function isDisjunctionSubset(left: Clause, right: Clause, quantifiers: Re
       let match = false;
       for (const rightQuad of right[side]) {
         // TODO: params get switched in recursive call but need to make sure blankMap is still used correctly
-        match = quadEqualsUniversal(left.conjunction ? leftQuad : rightQuad, left.conjunction ? rightQuad : leftQuad, quantifiers, blankMap);
+        match = quadEqualsUniversal(
+          left.conjunction ? leftQuad : rightQuad,
+          left.conjunction ? rightQuad : leftQuad,
+          quantifiers,
+          blankMap,
+        );
         if (match) {
           break;
         }
@@ -291,7 +317,8 @@ export function isDisjunctionSubset(left: Clause, right: Clause, quantifiers: Re
   }
   for (const leftClause of left.clauses) {
     // TODO: notice the swapped order!
-    if (!right.clauses.some((rightClause): boolean => isDisjunctionSubset(rightClause, leftClause, quantifiers, blankMap))) {
+    if (!right.clauses.some((rightClause): boolean =>
+      isDisjunctionSubset(rightClause, leftClause, quantifiers, blankMap))) {
       return false;
     }
   }
@@ -299,7 +326,12 @@ export function isDisjunctionSubset(left: Clause, right: Clause, quantifiers: Re
 }
 
 // TODO: checks equality but also allows different blank nodes in the same position if there is a valid mapping.
-export function quadEqualsUniversal(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>, blankMap: Record<string, string>): boolean {
+export function quadEqualsUniversal(
+  left: FancyQuad,
+  right: FancyQuad,
+  quantifiers: Record<string, number>,
+  blankMap: Record<string, string>,
+): boolean {
   const newBlankMap = { ...blankMap };
   for (const pos of QUAD_POSITIONS) {
     const leftTerm = left[pos];

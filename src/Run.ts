@@ -1,8 +1,9 @@
-import { Command, Option } from 'commander';
-import { readFileSync } from 'fs';
+import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
+import { Command, Option } from '@commander-js/extra-typings';
 import { loadBuiltins } from './BuiltinUtil';
 import { findAnswerClauses, pullGraffitiUp, removeDuplicateBlankNodes, toClause } from './ClauseUtil';
+import type { LogLevel } from './LogUtil';
 import { getLogger, LOG_LEVELS, setLogLevel } from './LogUtil';
 import { parseRoot, stringifyClause, stringifyQuad } from './ParseUtil';
 import { reason } from './ReasonUtil';
@@ -10,19 +11,18 @@ import { reason } from './ReasonUtil';
 const logger = getLogger('Run');
 
 export async function run(args: string[]): Promise<void> {
-  const program = new Command();
-
-  program
+  const program = new Command()
     .name('node bin/tension.js')
     .showHelpAfterError()
-    .argument('[string]', 'N3 string to parse, or a link to an N3 source, if no file was provided');
-
-  program
+    .argument('[string]', 'N3 string to parse, or a link to an N3 source, if no file was provided')
     .option('-s, --steps <number>', 'max amount of steps', '5')
     .option('--ignoreAnswer', 'does not stop when an answer surface is resolved')
     .option('-f,--file <string>', 'file to read from')
     .option('-t,--timer', 'runs a timer')
-    .addOption(new Option('-l, --logLevel <level>', 'logger level, currently using info/debug').choices(LOG_LEVELS).default('info'));
+    .addOption(new Option(
+      '-l, --logLevel <level>',
+      'logger level, currently using info/debug',
+    ).choices(LOG_LEVELS).default('info'));
 
   program.parse(args);
 
@@ -37,13 +37,13 @@ export async function run(args: string[]): Promise<void> {
     program.error('Either a file or string input is required');
   }
 
-  setLogLevel(opts.logLevel);
+  setLogLevel(opts.logLevel as LogLevel);
 
   if (opts.timer) {
     console.time('timer');
   }
 
-  const maxSteps = parseInt(opts.steps, 10);
+  const maxSteps = Number.parseInt(opts.steps, 10);
   let n3: string;
   if (opts.file) {
     n3 = readFileSync(opts.file).toString();
@@ -57,7 +57,7 @@ export async function run(args: string[]): Promise<void> {
   const root = toClause(formula);
   await loadBuiltins();
 
-  let answerClauses = opts.ignoreAnswer ? [] : findAnswerClauses(formula);
+  const answerClauses = opts.ignoreAnswer ? [] : findAnswerClauses(formula);
 
   logger.debug(`Quantifier levels: ${inspect(root.quantifiers)}`);
   logger.debug(`Starting clause: ${stringifyClause(root)}`);
@@ -83,5 +83,5 @@ function isUrl(input: string): boolean {
     return false;
   }
 
-  return url.protocol === "http:" || url.protocol === "https:";
+  return url.protocol === 'http:' || url.protocol === 'https:';
 }

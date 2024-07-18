@@ -2,6 +2,8 @@
   "name": "tension.js",
   "version": "0.1.0",
   "description": "An RDF surfaces reasoner",
+  "author": "Joachim Van Herwegen <joachim.vanherwegen@ugent.be>",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
@@ -12,11 +14,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "lint": "eslint . --cache --max-warnings 0"
   },
-  "author": "Joachim Van Herwegen <joachim.vanherwegen@ugent.be>",
-  "license": "MIT",
   "dependencies": {
+    "@commander-js/extra-typings": "^12.1.0",
     "@rdfjs/types": "^1.1.0",
     "@types/n3": "^1.16.4",
     "commander": "^12.1.0",
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@tsconfig/node18": "^18.2.4",
     "@types/node": "^18.19.31",
+    "opinionated-eslint-config": "^0.1.0",
     "typescript": "^5.4.5"
   }
 }

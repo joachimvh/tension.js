@@ -1,28 +1,30 @@
+/* eslint-disable line-comment-position,ts/naming-convention,unicorn/filename-case */
 declare module 'n3-parser.js' {
 
   export type LexerTokenMap = {
-    BLANK_TRIPLE_DATA: LexerToken[], // property list
-    BOOLEAN_LITERAL: `${'@'|''}true` | `${'@'|''}false`, // [ prefix, uri ]
-    DOCUMENT: LexerToken[], // statements
-    EXISTENTIAL: LexerToken[],
-    EXPLICIT_IRI: string,
-    FORMULA: LexerToken[], // statements
-    LIST: LexerToken[],
-    NUMERIC_LITERAL: string,
-    PREDICATE_OBJECT: [ LexerToken, LexerToken[]], // [ pred, objects ]
-    PREFIX: [ string, string | undefined ], // [ prefix, uri ]
-    PREFIXED_IRI: string,
-    RDF_LITERAL: [ string, LexerToken | undefined, string | undefined ] // [ value, type, lang ]
-    SYMBOLIC_IRI: '@a' | 'a' | '=' | '=>' | '<=',
-    TRIPLE_DATA: [ LexerToken, LexerToken[]], // [ subject, propertyList ]
-    UNIVERSAL: LexerToken[],
-    VARIABLE: string,
+    BLANK_TRIPLE_DATA: LexerToken[]; // Property list
+    BOOLEAN_LITERAL: `${'@' | ''}true` | `${'@' | ''}false`; // [ prefix, uri ]
+    DOCUMENT: LexerToken[]; // Statements
+    EXISTENTIAL: LexerToken[];
+    EXPLICIT_IRI: string;
+    FORMULA: LexerToken[]; // Statements
+    LIST: LexerToken[];
+    NUMERIC_LITERAL: string;
+    PREDICATE_OBJECT: [ LexerToken, LexerToken[]]; // [ pred, objects ]
+    PREFIX: [ string, string | undefined ]; // [ prefix, uri ]
+    PREFIXED_IRI: string;
+    RDF_LITERAL: [ string, LexerToken | undefined, string | undefined ]; // [ value, type, lang ]
+    SYMBOLIC_IRI: '@a' | 'a' | '=' | '=>' | '<=';
+    TRIPLE_DATA: [ LexerToken, LexerToken[]]; // [ subject, propertyList ]
+    UNIVERSAL: LexerToken[];
+    VARIABLE: string;
   };
 
-  export type LexerToken<key extends keyof LexerTokenMap = any> = { type: typeof N3Lexer.terms[key]; value: LexerTokenMap[key] };
+  export type LexerToken<key extends keyof LexerTokenMap = unknown> =
+    { type: typeof N3Lexer.terms[key]; value: LexerTokenMap[key] };
 
   export class N3Lexer {
-    terms = {
+    public terms = {
       BASE: 'Base',
       BLANK_TRIPLE_DATA: 'BlankTripleData',
       BOOLEAN_LITERAL: 'BooleanLiteral',
@@ -42,14 +44,14 @@ declare module 'n3-parser.js' {
       VARIABLE: 'Variable',
     } as const;
 
-    parse(n3: string): LexerToken;
+    public parse(n3: string): LexerToken;
   }
 
   export class N3Parser {
-    toJSONLD(n3: string): object;
+    public toJSONLD(n3: string): object;
   }
 
   export class JSONLDParser {
-    toN3(jsonld: object): string;
+    public toN3(jsonld: object): string;
   }
 }

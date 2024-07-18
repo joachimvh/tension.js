@@ -1,23 +1,22 @@
-import { Clause, createClause, RootClause } from './ClauseUtil';
-import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
-import { getLogger } from './LogUtil';
-import { QUAD_POSITIONS, stringifyClause } from './ParseUtil';
+import type { Clause, RootClause } from './ClauseUtil';
+import { createClause } from './ClauseUtil';
+import type { FancyQuad, FancyTerm } from './FancyUtil';
+import { fancyEquals } from './FancyUtil';
+import { QUAD_POSITIONS } from './ParseUtil';
 import { isUniversal } from './SimplifyUtil';
-
-const logger = getLogger('Bind');
 
 export type Binding = Record<string, FancyTerm>;
 
 export type BindCache = {
-  clauses: WeakSet<Clause>,
-  quads: WeakSet<FancyQuad>,
-  bindings: Binding[],
-}
+  clauses: WeakSet<Clause>;
+  quads: WeakSet<FancyQuad>;
+  bindings: Binding[];
+};
 
 // TODO: make optional
 // Using a WeakSet so clauses that get removed from root don't get checked afterwards
 export function* findBindings(root: RootClause, cache?: BindCache): IterableIterator<Binding> {
-  cache = cache || { clauses: new WeakSet(), quads: new WeakSet(), bindings: [] };
+  cache = cache ?? { clauses: new WeakSet(), quads: new WeakSet(), bindings: []};
   for (const clause of root.clauses) {
     for (const binding of findClauseBindings(root, clause, cache)) {
       if (cache.bindings.some((cached): boolean => isSameBinding(binding, cached))) {
@@ -56,7 +55,8 @@ export function* findClauseBindings(root: RootClause, clause: Clause, cache: Bin
   }
 }
 
-export function* findRootQuadBindings(rootQuad: FancyQuad, clause: Clause, quantifiers: Record<string, number>): IterableIterator<Binding> {
+export function* findRootQuadBindings(rootQuad: FancyQuad, clause: Clause, quantifiers: Record<string, number>):
+IterableIterator<Binding> {
   for (const child of clause.clauses) {
     yield* findRootQuadBindings(rootQuad, child, quantifiers);
   }
@@ -71,9 +71,10 @@ export function* findRootQuadBindings(rootQuad: FancyQuad, clause: Clause, quant
 }
 
 // TODO: returns undefined if no binding is possible, returns {} if a binding is possible but no mappings are needed
-export function getBinding(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): Binding | undefined {
+export function getBinding(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>):
+  Binding | undefined {
   // TODO: might have to differentiate between no mapping and impossible mapping?
-  let binding: Binding = {};
+  const binding: Binding = {};
   for (const pos of QUAD_POSITIONS) {
     const result = getTermBinding(left[pos], right[pos], quantifiers);
     if (!result) {
@@ -85,7 +86,8 @@ export function getBinding(left: FancyQuad, right: FancyQuad, quantifiers: Recor
   return binding;
 }
 
-export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: Record<string, number>): Binding | undefined {
+export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: Record<string, number>):
+  Binding | undefined {
   const result: Binding = {};
 
   if (isUniversal(left, quantifiers)) {
@@ -102,9 +104,13 @@ export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: R
     if (left.termType !== right.termType || left.value.length !== right.value.length) {
       return;
     }
-    const callback = left.termType === 'Graph' ? getBinding : getTermBinding;
+    const bindFn = left.termType === 'Graph' ? getBinding : getTermBinding;
     for (let i = 0; i < left.value.length; ++i) {
-      const partial = callback(left.value[i] as any, right.value[i] as any, quantifiers);
+      const partial = bindFn(
+        left.value[i] as FancyQuad & FancyTerm,
+        right.value[i] as FancyQuad & FancyTerm,
+        quantifiers,
+      );
       if (!partial) {
         return;
       }
@@ -121,7 +127,7 @@ export function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: R
 // TODO: undefined implies there was no change
 export function applyBindings(clause: Clause, bindings: Binding): Clause | undefined {
   const children = clause.clauses.map((child): Clause | undefined => applyBindings(child, bindings));
-  let change = children.some((child): boolean => Boolean(child));
+  let change = children.some(Boolean);
   const clauses = change ? children.map((child, idx): Clause => child ?? clause.clauses[idx]) : clause.clauses;
   const boundPositive = applyBindingsToQuads(clause.positive, bindings);
   const boundNegative = applyBindingsToQuads(clause.negative, bindings);
@@ -138,7 +144,7 @@ export function applyBindings(clause: Clause, bindings: Binding): Clause | undef
 
 export function applyBindingsToQuads(quads: FancyQuad[], bindings: Binding): FancyQuad[] | undefined {
   let change = false;
-  let bound: FancyQuad[] = [];
+  const bound: FancyQuad[] = [];
   for (const quad of quads) {
     const boundQuad = applyBindingsToQuad(quad, bindings);
     if (boundQuad) {
@@ -155,7 +161,7 @@ export function applyBindingsToQuads(quads: FancyQuad[], bindings: Binding): Fan
 
 export function applyBindingsToQuad(quad: FancyQuad, bindings: Binding): FancyQuad | undefined {
   let updateQuad = false;
-  let boundQuad: Partial<FancyQuad> = {};
+  const boundQuad: Partial<FancyQuad> = {};
   for (const pos of QUAD_POSITIONS) {
     const boundTerm = applyBindingsToTerm(quad[pos], bindings);
     if (boundTerm) {
@@ -174,10 +180,10 @@ export function applyBindingsToQuad(quad: FancyQuad, bindings: Binding): FancyQu
 export function applyBindingsToTerm(term: FancyTerm, bindings: Binding): FancyTerm | undefined {
   if (term.termType === 'Graph' || term.termType === 'List') {
     let change = false;
-    let boundValues: (FancyQuad | FancyTerm)[] = [];
-    const callback = term.termType === 'Graph' ? applyBindingsToQuad : applyBindingsToTerm;
+    const boundValues: (FancyQuad | FancyTerm)[] = [];
+    const applyFn = term.termType === 'Graph' ? applyBindingsToQuad : applyBindingsToTerm;
     for (const child of term.value) {
-      const boundQuad = callback(child as any, bindings);
+      const boundQuad = applyFn(child as FancyQuad & FancyTerm, bindings);
       if (boundQuad) {
         change = true;
         boundValues.push(boundQuad);
@@ -185,7 +191,7 @@ export function applyBindingsToTerm(term: FancyTerm, bindings: Binding): FancyTe
         boundValues.push(child);
       }
     }
-    return change ? { ...term, value: boundValues as any } : term;
+    return change ? { ...term, value: boundValues as (FancyQuad & FancyTerm)[] } : term;
   }
 
   if (term.termType !== 'BlankNode') {

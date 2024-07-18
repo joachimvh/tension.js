@@ -1,22 +1,22 @@
-import { BlankNode } from '@rdfjs/types';
+import type { BlankNode } from '@rdfjs/types';
 import { DataFactory } from 'n3';
 import { N3Parser } from 'n3-parser.js';
 import { stringToTerm } from 'rdf-string';
-import { Clause } from './ClauseUtil';
-import { FancyQuad, FancyTerm, Graph, List } from './FancyUtil';
+import type { Clause } from './ClauseUtil';
+import type { FancyQuad, FancyTerm, Graph, List } from './FancyUtil';
 
 const DF = DataFactory;
 
 export type Formula = {
   data: FancyQuad[];
   surfaces: NegativeSurface[];
-}
+};
 
 export type NegativeSurface = {
   graffiti: BlankNode[];
   formula: Formula;
   answer: boolean;
-}
+};
 
 const ON_NEGATIVE_SURFACE = 'http://www.w3.org/2000/10/swap/log#onNegativeSurface';
 const ON_NEGATIVE_COMPONENT_SURFACE = 'http://www.w3.org/2000/10/swap/log#onNegativeComponentSurface';
@@ -26,7 +26,7 @@ const NEGATIVE_SURFACE_PREDICATES = [
   ON_NEGATIVE_SURFACE,
   ON_NEGATIVE_COMPONENT_SURFACE,
   ON_NEGATIVE_QUESTION_SURFACE,
-  ON_NEGATIVE_ANSWER_SURFACE
+  ON_NEGATIVE_ANSWER_SURFACE,
 ] as const;
 const RDF_TYPE = DF.namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
 
@@ -38,6 +38,7 @@ export function parseRoot(n3: string): Formula {
   let body = result;
   if (!('@graph' in body)) {
     delete result['@context'];
+    // eslint-disable-next-line ts/naming-convention
     body = { '@graph': result };
   }
   return parseFormula(body, context);
@@ -47,12 +48,16 @@ function parseFormula(graph: Record<string, unknown>, prefixes: Record<string, s
   if (!graph['@graph']) {
     throw new Error(`Unexpected formula: ${JSON.stringify(graph)}`);
   }
-  const subGraph = Array.isArray(graph['@graph']) ? graph['@graph'] : [ graph['@graph'] ];
+  const subGraph = (
+    Array.isArray(graph['@graph']) ?
+      graph['@graph'] :
+        [ graph['@graph'] ]
+  ) as Record<string, unknown>[];
 
   const result: Formula = {
     data: [],
     surfaces: [],
-  }
+  };
   for (const entry of subGraph) {
     const parsed = parseEntry(entry, prefixes);
     if (Array.isArray(parsed)) {
@@ -78,7 +83,7 @@ function parseEntry(entry: Record<string, unknown>, prefixes: Record<string, str
     if (surfacePred) {
       const graffiti = parseGraffiti(entry['@list'] as object[]);
       const formula = parseFormula(entry[surfacePred] as Record<string, unknown>, prefixes);
-      return { graffiti, formula: formula as Formula, answer: ON_NEGATIVE_ANSWER_SURFACE in entry};
+      return { graffiti, formula, answer: ON_NEGATIVE_ANSWER_SURFACE in entry };
     }
   }
 
@@ -89,7 +94,7 @@ function parseEntry(entry: Record<string, unknown>, prefixes: Record<string, str
 function removePrefixes(entry: Record<string, unknown>, prefixes: Record<string, string>): void {
   const prefixKeys = Object.keys(prefixes);
   for (const [ key, value ] of Object.entries(entry)) {
-    const prefixMatch = prefixKeys.find(prefix => key.startsWith(`${prefix}:`));
+    const prefixMatch = prefixKeys.find((prefix): boolean => key.startsWith(`${prefix}:`));
     if (prefixMatch) {
       delete entry[key];
       const newKey = prefixes[prefixMatch] + key.slice(`${prefixMatch}:`.length);
@@ -101,7 +106,7 @@ function removePrefixes(entry: Record<string, unknown>, prefixes: Record<string,
     if (value) {
       value = Array.isArray(value) ? value : [ value ];
       value = value.map((child): string => {
-        const prefixMatch = prefixKeys.find(prefix => child.startsWith(prefix));
+        const prefixMatch = prefixKeys.find((prefix): boolean => child.startsWith(prefix));
         if (prefixMatch) {
           return prefixes[prefixMatch] + child.slice(`${prefixMatch}:`.length);
         }
@@ -123,21 +128,26 @@ function parseGraffiti(graffiti: object[]): BlankNode[] {
   return result;
 }
 
-function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], prefixes: Record<string, string>,
-  subject?: FancyTerm, predicate?: FancyTerm): FancyQuad[] {
+function parseQuads(
+  input: Record<string, unknown> | Record<string, unknown>[],
+  prefixes: Record<string, string>,
+  subject?: FancyTerm,
+  predicate?: FancyTerm,
+): FancyQuad[] {
   if (Array.isArray(input)) {
     return input.flatMap((child): FancyQuad[] => parseQuads(child, prefixes, subject, predicate));
   }
   removePrefixes(input, prefixes);
 
-  let newSubject = parseTerm(input, prefixes);
+  const newSubject = parseTerm(input, prefixes);
   const result: FancyQuad[] = [];
 
   if (subject && predicate) {
     result.push(createFancyQuad(subject, predicate, newSubject));
   }
 
-  // For each field: either it's a new object with an @id, so recurse (unless only field), it's a string, so parse, or could be complex value object
+  // For each field: either it's a new object with an @id, so recurse (unless only field),
+  // it's a string, so parse, or could be complex value object
   for (const key of Object.keys(input)) {
     if (key === '@id' || key === '@value' || key === '@list') {
       continue;
@@ -150,7 +160,8 @@ function parseQuads(input: Record<string, unknown> | Record<string, unknown>[], 
         continue;
       }
       if (Array.isArray(val)) {
-        result.push(...val.map((child): FancyQuad => createFancyQuad(newSubject, RDF_TYPE, stringToTerm(child as string))));
+        result.push(...val.map((child): FancyQuad =>
+          createFancyQuad(newSubject, RDF_TYPE, stringToTerm(child as string))));
       } else {
         result.push(createFancyQuad(newSubject, RDF_TYPE, stringToTerm(val as string)));
       }
@@ -205,7 +216,8 @@ function parseTerm(input: unknown, prefixes: Record<string, string>): FancyTerm 
     if ('@graph' in input!) {
       return {
         termType: 'Graph',
-        value: (input['@graph'] as unknown[]).flatMap((child): FancyQuad[] => parseQuads(child as any, prefixes)),
+        value: (input['@graph'] as unknown[])
+          .flatMap((child): FancyQuad[] => parseQuads(child as Record<string, unknown>, prefixes)),
       } satisfies Graph;
     }
   }
@@ -226,8 +238,9 @@ export function stringifyClause(clause: Clause): string {
   return members.join(` ${clause.conjunction ? '&&' : '||'} `);
 }
 
-export function stringifyQuad(quad: FancyQuad, negated: boolean = false): string {
-  return `${negated ? '-' : ''}(${stringifyTerm(quad.subject)} ${stringifyTerm(quad.predicate)} ${stringifyTerm(quad.object)})`;
+export function stringifyQuad(quad: FancyQuad, negated = false): string {
+  return `${negated ? '-' : ''}(${stringifyTerm(quad.subject)} ${
+    stringifyTerm(quad.predicate)} ${stringifyTerm(quad.object)})`;
 }
 
 export function stringifyTerm(term: FancyTerm): string {
@@ -243,10 +256,12 @@ export function stringifyTerm(term: FancyTerm): string {
   if (term.termType === 'Literal') {
     if (term.datatype.value === 'http://www.w3.org/2001/XMLSchema#boolean' || term.datatype.value === 'http://www.w3.org/2001/XMLSchema#number') {
       return term.value;
-    } else if (term.language) {
-      return `"${term.value}"@${term.language}`
-    } else if (term.datatype.value !== 'http://www.w3.org/2001/XMLSchema#string') {
-      return `"${term.value}"^^<${term.datatype.value}>`
+    }
+    if (term.language) {
+      return `"${term.value}"@${term.language}`;
+    }
+    if (term.datatype.value !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `"${term.value}"^^<${term.datatype.value}>`;
     }
     return `"${term.value}"`;
   }
@@ -256,5 +271,5 @@ export function stringifyTerm(term: FancyTerm): string {
   if (term.termType === 'List') {
     return `( ${term.value.map(stringifyTerm).join(' ')} )`;
   }
-  throw new Error('Unsupported term type ' + term.termType);
+  throw new Error(`Unsupported term type ${term.termType}`);
 }

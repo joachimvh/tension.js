@@ -1,7 +1,9 @@
-import { BlankNode } from '@rdfjs/types';
+import type { BlankNode } from '@rdfjs/types';
 import { handleBuiltinCheck } from './BuiltinUtil';
-import { Clause, createClause, RootClause } from './ClauseUtil';
-import { fancyEquals, FancyQuad, FancyTerm } from './FancyUtil';
+import type { Clause, RootClause } from './ClauseUtil';
+import { createClause } from './ClauseUtil';
+import type { FancyQuad, FancyTerm } from './FancyUtil';
+import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
 
@@ -20,7 +22,8 @@ export function simplifyRoot(root: RootClause): boolean {
     change = change || Boolean(simplified);
 
     if (simplified) {
-      logger.debug(`Simplified ${stringifyClause(child)} to ${typeof simplified === 'boolean' ? simplified : stringifyClause(simplified)}`);
+      logger.debug(`Simplified ${stringifyClause(child)} to ${
+        typeof simplified === 'boolean' ? simplified : stringifyClause(simplified)}`);
     }
 
     if (simplified === true) {
@@ -38,7 +41,8 @@ export function simplifyRoot(root: RootClause): boolean {
   }
 
   // A contradiction in root means no useful information can be deduced
-  // TODO: this is not a good function to call for root though as it will do double work, on the other hand, usually not that many quads in root
+  // TODO: this is not a good function to call for root though as it will do double work,
+  //       on the other hand, usually not that many quads in root
   if (isContradiction(root, root)) {
     throw new Error('Found a contradiction at root level, stopping execution.');
   }
@@ -70,36 +74,37 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
 
     if (simplified === true) {
       return true;
-    } else if (simplified === false) {
+    }
+    if (simplified === false) {
       removeClauseIdx.add(idx);
     } else {
-      clauses = clauses || [ ...clause.clauses ];
+      clauses = clauses ?? [ ...clause.clauses ];
       clauses[idx] = simplified;
       // Remove single triple clauses and put them directly into relevant store
       if (simplified.positive.length + simplified.negative.length === 1) {
         removeClauseIdx.add(idx);
         const side = simplified.positive.length === 1 ? 'positive' : 'negative';
-        quads[side] = quads[side] || [...clause[side]];
+        quads[side] = quads[side] ?? [ ...clause[side] ];
         quads[side]!.push(simplified[side][0]);
       }
     }
   }
   if (removeClauseIdx.size > 0) {
-    clauses = clauses || [ ...clause.clauses ];
+    clauses = clauses ?? [ ...clause.clauses ];
     clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
   }
 
   removeClauseIdx.clear();
   // A || (A && B) implies A
   // Need to make sure we use the new clauses array if there is one
-  for (const [ idx, child ] of (clauses || clause.clauses).entries()) {
+  for (const [ idx, child ] of (clauses ?? clause.clauses).entries()) {
     // Needs to happen after previous block, so we still find contradictions
-    if (hasDisjunctionSubset(child, { ...clause, clauses: clauses || clause.clauses })) {
+    if (hasDisjunctionSubset(child, { ...clause, clauses: clauses ?? clause.clauses })) {
       removeClauseIdx.add(idx);
     }
   }
   if (removeClauseIdx.size > 0) {
-    clauses = clauses || [ ...clause.clauses ];
+    clauses = clauses ?? [ ...clause.clauses ];
     clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
   }
 
@@ -114,36 +119,41 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     const clauseQuads = quads[side] ? quads[side]! : clause[side];
     const removeIdx = new Set<number>();
     const neg = side === 'negative';
-    for (const [idxA, quadA] of clauseQuads.entries()) {
+    for (const [ idxA, quadA ] of clauseQuads.entries()) {
       // TODO: similar to simplifyLevel2 (like many parts of this function tbh)
       const builtinResult = handleBuiltinCheck({ root, clause, quad: quadA });
       if (typeof builtinResult === 'boolean') {
         if (builtinResult === (side === 'positive')) {
-          // true
-          logger.debug(`${stringifyQuad(quadA, side === 'negative')} is true so ${stringifyClause(clause)} can be ignored`);
+          // True
+          logger.debug(
+            `${stringifyQuad(quadA, side === 'negative')} is true so ${stringifyClause(clause)} can be ignored`,
+          );
           return true;
-        } else {
-          // false
-          removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(quadA, side === 'negative')} is false so can be removed from disjunction (builtin)`);
-          continue;
         }
+        // False
+        removeIdx.add(idxA);
+        logger.debug(
+          `${stringifyQuad(quadA, side === 'negative')} is false so can be removed from disjunction (builtin)`,
+        );
+        continue;
       }
 
       // Remove "duplicates"
-      for (const [idxB, quadB] of clauseQuads.entries()) {
+      for (const [ idxB, quadB ] of clauseQuads.entries()) {
         // TODO: this prevents removing both B in A || B || B
         if (idxA === idxB || removeIdx.has(idxB)) {
           continue;
         }
-        // TODO: `impliesQuad` can give wrong results since \forall x,y: f(x) | f(y) | h(y) does not imply \forall x,y: f(x) | h(y)
+        // TODO: `impliesQuad` can give wrong results since \forall x,y: f(x) | f(y) | h(y)
+        //       does not imply \forall x,y: f(x) | h(y)
         // TODO: need to also take into account that \forall x: f(x) | f(A) does not imply \forall x: f(x)!
         //       it could be that only f(A) is true for all values
         //       \forall x: f(x) | g(x) | f(A) also does not imply \forall x: g(x) | f(A)!
         // if (impliesQuad(quadB, quadA, root.quantifiers)) {
         if (fancyEquals(quadA, quadB)) {
           removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(quadB, neg)} implies ${stringifyQuad(quadA, neg)} can be removed from disjunction (same disjunction)`);
+          logger.debug(`${stringifyQuad(quadB, neg)} implies ${
+            stringifyQuad(quadA, neg)} can be removed from disjunction (same disjunction)`);
           break;
         }
       }
@@ -152,10 +162,11 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
       }
       // Remove false values
       for (const rootQuad of root[neg ? 'positive' : 'negative']) {
-        // if (impliesQuad(quadA, quadB, root.quantifiers)) {
+        // If (impliesQuad(quadA, quadB, root.quantifiers)) {
         if (equalOrLeftUniversal(rootQuad, quadA, root.quantifiers)) {
           removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(rootQuad, !neg)} is known so ${stringifyQuad(quadA, neg)} can be removed from disjunction (root data)`);
+          logger.debug(`${stringifyQuad(rootQuad, !neg)} is known so ${
+            stringifyQuad(quadA, neg)} can be removed from disjunction (root data)`);
           break;
         }
       }
@@ -174,7 +185,8 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
 
   // We have removed all false values, so nothing true is left
   if (result.clauses.length === 0 && result.positive.length === 0 && result.negative.length === 0) {
-    throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${stringifyClause(clause)}`);
+    throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${
+      stringifyClause(clause)}`);
   }
 
   const simplifiedQuads = clauseToTriples(clause);
@@ -201,29 +213,31 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
   for (const side of [ 'positive', 'negative' ] as const) {
     const clauseQuads = clause[side];
     const removeIdx = new Set<number>();
-    for (const [idxA, quadA] of clauseQuads.entries()) {
+    for (const [ idxA, quadA ] of clauseQuads.entries()) {
       // Check builtins
       const builtinResult = handleBuiltinCheck({ root, clause, quad: quadA });
       if (typeof builtinResult === 'boolean') {
         if (builtinResult === (side === 'positive')) {
-          // true
+          // True
           removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(quadA, side === 'negative')} is true so can be removed from conjunction (builtin)`);
+          logger.debug(`${stringifyQuad(quadA, side === 'negative')
+          } is true so can be removed from conjunction (builtin)`);
           continue;
         } else {
-          // false
+          // False
           logger.debug(`${stringifyClause(clause)} is a contradiction (builtin)`);
           return false;
         }
       }
 
       // Remove "duplicates"
-      for (const [idxB, quadB] of clauseQuads.entries()) {
+      for (const [ idxB, quadB ] of clauseQuads.entries()) {
         if (idxA === idxB || removeIdx.has(idxB)) {
           continue;
         }
         if (impliesQuad(quadB, quadA, root.quantifiers)) {
-          logger.debug(`${stringifyQuad(quadB)} implies ${stringifyQuad(quadA)} can be removed from conjunction (same conjunction)`);
+          logger.debug(`${stringifyQuad(quadB)} implies ${
+            stringifyQuad(quadA)} can be removed from conjunction (same conjunction)`);
           removeIdx.add(idxA);
           break;
         }
@@ -234,7 +248,8 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
       // Remove true values
       for (const rootQuad of root[side]) {
         if (impliesQuad(rootQuad, quadA, root.quantifiers)) {
-          logger.debug(`${stringifyQuad(rootQuad)} implies ${stringifyQuad(quadA,)} can be removed from conjunction (root data)`);
+          logger.debug(`${stringifyQuad(rootQuad)} implies ${
+            stringifyQuad(quadA)} can be removed from conjunction (root data)`);
           removeIdx.add(idxA);
           break;
         }
@@ -267,13 +282,15 @@ export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boole
 export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
   for (const quad of clause.positive) {
     if (parent.positive.some((parentQuad): boolean => fancyEquals(quad, parentQuad))) {
-      logger.debug(`${stringifyQuad(quad)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
+      logger.debug(`${stringifyQuad(quad)} implies ${
+        stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
   }
   for (const quad of clause.negative) {
     if (parent.negative.some((parentQuad): boolean => fancyEquals(quad, parentQuad))) {
-      logger.debug(`${stringifyQuad(quad, true)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
+      logger.debug(`${stringifyQuad(quad, true)} implies ${
+        stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
   }
@@ -297,7 +314,8 @@ export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
       }
     }
     if (match) {
-      logger.debug(`${stringifyClause(conj)} implies ${stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
+      logger.debug(`${stringifyClause(conj)} implies ${
+        stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }
   }
@@ -388,8 +406,11 @@ export function clauseToTriples(clause: Clause): Clause | undefined {
   return clause.clauses[0];
 }
 
-export function compareTerms(left: FancyQuad, right: FancyQuad,
-  comparator: (termLeft: FancyTerm, termRight: FancyTerm) => boolean | undefined): boolean {
+export function compareTerms(
+  left: FancyQuad,
+  right: FancyQuad,
+  comparator: (termLeft: FancyTerm, termRight: FancyTerm) => boolean | undefined,
+): boolean {
   for (const pos of QUAD_POSITIONS) {
     const termLeft = left[pos];
     const termRight = right[pos];
@@ -403,10 +424,15 @@ export function compareTerms(left: FancyQuad, right: FancyQuad,
   return true;
 }
 
-// TODO: all the functions below have issues with for example the same blank node occurring twice in a quad, need to track implied bindings
+// TODO: all the functions below have issues with for example the same blank node occurring twice in a quad,
+//       need to track implied bindings
 
-export function conjunctionContradiction(positive: FancyQuad, negative: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(positive, negative, (termLeft, termRight) => {
+export function conjunctionContradiction(
+  positive: FancyQuad,
+  negative: FancyQuad,
+  quantifiers: Record<string, number>,
+): boolean {
+  return compareTerms(positive, negative, (termLeft, termRight): boolean | undefined => {
     if (isUniversal(termLeft, quantifiers)) {
       return;
     }
@@ -420,8 +446,12 @@ export function conjunctionContradiction(positive: FancyQuad, negative: FancyQua
   });
 }
 
-export function disjunctionTautology(positive: FancyQuad, negative: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(positive, negative, (termLeft, termRight) => {
+export function disjunctionTautology(
+  positive: FancyQuad,
+  negative: FancyQuad,
+  quantifiers: Record<string, number>,
+): boolean {
+  return compareTerms(positive, negative, (termLeft, termRight): boolean | undefined => {
     if (isExistential(termLeft, quantifiers) && !isUniversal(termRight, quantifiers)) {
       return;
     }
@@ -435,7 +465,7 @@ export function disjunctionTautology(positive: FancyQuad, negative: FancyQuad, q
 }
 
 export function equalOrLeftUniversal(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(left, right, (termLeft, termRight) => {
+  return compareTerms(left, right, (termLeft, termRight): boolean | undefined => {
     if (isUniversal(termLeft, quantifiers)) {
       return;
     }
@@ -447,11 +477,12 @@ export function equalOrLeftUniversal(left: FancyQuad, right: FancyQuad, quantifi
 
 // TODO: this function is identical to equalOrLeftUniversal, currently here for semantic reasons
 export function impliesQuad(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(left, right, (termLeft, termRight) => {
+  return compareTerms(left, right, (termLeft, termRight): boolean | undefined => {
     if (isUniversal(termLeft, quantifiers)) {
       return;
     }
-    // TODO: currently not using existentials as this breaks if you, for example, have the same existential in several parts of a conjunction
+    // TODO: currently not using existentials as this breaks if you, for example,
+    //       have the same existential in several parts of a conjunction
     //       e.g., \exists x: (f(x) && g(x)) || A can not be simplified to g(x) || A just because f(A) is known,
     //       g(A) would also have to be known
     // if (isExistential(termRight, quantifiers)) {

@@ -1,20 +1,24 @@
 import { inspect } from 'node:util';
-import { applyBindings, applyBindingsToQuad, BindCache, findBindings } from './BindUtil';
-import { BuiltinCache, generateBuiltinResultClauses } from './BuiltinUtil';
-import { Clause, isDisjunctionSubset, RootClause } from './ClauseUtil';
+import type { BindCache } from './BindUtil';
+import { applyBindings, applyBindingsToQuad, findBindings } from './BindUtil';
+import type { BuiltinCache } from './BuiltinUtil';
+import { generateBuiltinResultClauses } from './BuiltinUtil';
+import type { Clause, RootClause } from './ClauseUtil';
+import { isDisjunctionSubset } from './ClauseUtil';
 import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { applyClauseOverlap, findOverlappingClause, OverlapCache } from './OverlapUtil';
+import type { OverlapCache } from './OverlapUtil';
+import { applyClauseOverlap, findOverlappingClause } from './OverlapUtil';
 import { stringifyClause, stringifyQuad } from './ParseUtil';
 import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
 const logger = getLogger('Reason');
 
 export type ReasonCaches = {
-  builtinCache: BuiltinCache,
-  bindingCache: BindCache,
-  overlapCache: OverlapCache,
-}
+  builtinCache: BuiltinCache;
+  bindingCache: BindCache;
+  overlapCache: OverlapCache;
+};
 
 export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
   const cache: ReasonCaches = {
@@ -25,11 +29,11 @@ export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5):
       bindings: [],
     },
     overlapCache: new WeakMap(),
-  }
+  };
   let count = 0;
 
-  while ((count < maxSteps || maxSteps <= 0) && reasonStep(root, answerClauses, cache)) {
-    ++count;
+  while ((maxSteps <= 0 ? true : count < maxSteps) && reasonStep(root, answerClauses, cache)) {
+    count += 1;
     logger.debug(`COMPLETED STEP ${count}`);
   }
   logger.debug('FINISHED');
@@ -97,8 +101,9 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
     const leftCount = countQuads(overlap.left.clause);
     const rightCount = countQuads(overlap.right.clause);
     for (const clause of overlapClauses) {
-      // Note that I spent an hour debugging why this didn't work because I first had `change = change || handleNewClause...`
-      change = handleNewClause(root, clause, newClauses, (simplified): boolean => leftCount + rightCount > countQuads(simplified)) || change;
+      // I spent an hour debugging why this didn't work because I first had `change = change || handleNewClause...`
+      change = handleNewClause(root, clause, newClauses, (simplified): boolean =>
+        leftCount + rightCount > countQuads(simplified)) || change;
     }
   }
   root.clauses.push(...newClauses);
@@ -117,7 +122,12 @@ export function isAnswered(root: RootClause, answerClauses: Clause[]): boolean {
   return false;
 }
 
-export function handleNewClause(root: RootClause, clause: Clause, newClauses: Clause[], additionalCheck?: (simplified: Clause) => boolean): boolean {
+export function handleNewClause(
+  root: RootClause,
+  clause: Clause,
+  newClauses: Clause[],
+  additionalCheck?: (simplified: Clause) => boolean,
+): boolean {
   const simplified = simplifyLevel1(root, clause) ?? clause;
   if (simplified === true) {
     return false;
@@ -130,8 +140,8 @@ export function handleNewClause(root: RootClause, clause: Clause, newClauses: Cl
     return false;
   }
 
-  if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))
-    || newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
+  if (root.clauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers)) ||
+    newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
     return false;
   }
   logger.debug(`Storing new clause: ${stringifyClause(simplified)}`);
@@ -140,5 +150,7 @@ export function handleNewClause(root: RootClause, clause: Clause, newClauses: Cl
 }
 
 export function countQuads(clause: Clause): number {
-  return clause.positive.length + clause.negative.length + clause.clauses.map(countQuads).reduce((sum, val): number => sum + val, 0);
+  return clause.positive.length +
+    clause.negative.length +
+    clause.clauses.map(countQuads).reduce((sum, val): number => sum + val, 0);
 }

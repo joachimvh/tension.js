@@ -51,7 +51,8 @@
 //       \forall y: -f(y, C) || D || h(y)
 //       -> \forall z: B || D || g(z) || h(z) (could also keep original quantifiers though, prolly easier)
 //          is the above actually correct with how we merge quantifiers?
-//          actually not, result should be B || D || g(A) || h(C)!!! (because f(A, x) and -f(y, C) could both be true for all values that are not C/A)
+//          actually not, result should be B || D || g(A) || h(C)!!! (because f(A, x) and -f(y, C)
+//                        could both be true for all values that are not C/A)
 //
 //       \forall x: f(x) || B || g(x)
 //       \forall y: -f(y) || C || h(y)

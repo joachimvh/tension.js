@@ -1,5 +1,6 @@
 import type { TransformableInfo } from 'logform';
-import { createLogger, format, Logger, transports } from 'winston';
+import type { Logger } from 'winston';
+import { createLogger, format, transports } from 'winston';
 
 export const LOG_LEVELS = [ 'error', 'warn', 'info', 'verbose', 'debug', 'silly' ] as const;
 
@@ -10,8 +11,9 @@ export type LogLevel = typeof LOG_LEVELS[number];
 
 const loggers: Logger[] = [];
 
+// eslint-disable-next-line import/no-mutable-exports
 export let GLOBAL_LOG_LEVEL: LogLevel = 'info';
-export function setLogLevel(level: LogLevel) {
+export function setLogLevel(level: LogLevel): void {
   GLOBAL_LOG_LEVEL = level;
   for (const logger of loggers) {
     logger.level = level;
@@ -27,7 +29,7 @@ export function getLogger(label: string): Logger {
       format.timestamp(),
       format.metadata({ fillExcept: [ 'level', 'label', 'message' ]}),
       format.printf(
-        ({ level: levelInner, message, label: labelInner, timestamp, metadata: meta }: TransformableInfo): string =>
+        ({ level: levelInner, message, label: labelInner }: TransformableInfo): string =>
           `[${labelInner}] ${levelInner}: ${message}`,
       ),
     ),
