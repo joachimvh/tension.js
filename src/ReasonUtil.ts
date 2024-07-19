@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import type { BindCache } from './BindUtil';
-import { applyBindings, applyBindingsToQuad, findBindings } from './BindUtil';
+import { applyBinding, findBindings } from './BindUtil';
 import type { BuiltinCache } from './BuiltinUtil';
 import { generateBuiltinResultClauses } from './BuiltinUtil';
 import type { Clause, RootClause } from './ClauseUtil';
@@ -65,7 +65,7 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
     newClauses = [];
     logger.debug(`Applying binding ${inspect(binding)}`);
     for (const clause of root.clauses) {
-      const bound = applyBindings(clause, binding);
+      const bound = applyBinding(clause, binding);
       if (bound) {
         change = handleNewClause(root, bound, newClauses) || change;
       }
@@ -77,7 +77,7 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
     // TODO: better way to check if a quad should be checked (per quad list of blank nodes in it?)
     for (const side of [ 'positive', 'negative' ] as const) {
       for (const quad of root[side]) {
-        const boundQuad = applyBindingsToQuad(quad, binding);
+        const boundQuad = applyBinding(quad, binding);
         if (boundQuad && !root[side].some((oldQuad): boolean => fancyEquals(boundQuad, oldQuad))) {
           root[side].push(boundQuad);
           logger.info(`Deduced ${stringifyQuad(boundQuad, side === 'negative')}`);

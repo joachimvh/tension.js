@@ -1,11 +1,15 @@
-import type { BlankNode } from '@rdfjs/types';
+import type { BuiltinCallOptions } from './BuiltinUtil';
 import { handleBuiltinCheck } from './BuiltinUtil';
 import type { Clause, RootClause } from './ClauseUtil';
 import { createClause } from './ClauseUtil';
-import type { FancyQuad, FancyTerm } from './FancyUtil';
-import { fancyEquals } from './FancyUtil';
+import {
+  equalOrExistential,
+  equalOrUniversal,
+  fancyEquals,
+  impliesQuad,
+} from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { QUAD_POSITIONS, stringifyClause, stringifyQuad } from './ParseUtil';
+import { stringifyClause, stringifyQuad } from './ParseUtil';
 
 // TODO: level 0: root, level 1: disjunctions, level 2: leaf conjunctions
 
@@ -41,10 +45,12 @@ export function simplifyRoot(root: RootClause): boolean {
   }
 
   // A contradiction in root means no useful information can be deduced
-  // TODO: this is not a good function to call for root though as it will do double work,
-  //       on the other hand, usually not that many quads in root
-  if (isContradiction(root, root)) {
-    throw new Error('Found a contradiction at root level, stopping execution.');
+  for (const positive of root.positive) {
+    for (const negative of root.negative) {
+      if (equalOrUniversal(positive, negative, root.quantifiers)) {
+        throw new Error('Found a contradiction at root level, stopping execution.');
+      }
+    }
   }
 
   return change;
@@ -61,8 +67,75 @@ export function handleConjunctionResult(root: RootClause, conjunction: Clause): 
 }
 
 export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true | undefined {
-  const quads: Partial<Pick<Clause, 'positive' | 'negative'>> = { positive: undefined, negative: undefined };
-  let clauses: Clause[] | undefined;
+  // Simplify the conjunctions first
+  const result = simplifyLevel1Children(root, clause);
+  if (result === true) {
+    return true;
+  }
+
+  // Remove conjunctions that are a superset of other conjunctions/triples
+  removeLevel1Supersets(result);
+
+  // Remove duplicate triples/triples known to be false,
+  // if a value returns true this means the entire disjunction is true
+  if (removeSuperfluousTriples(root, result) === true) {
+    return true;
+  }
+
+  const value = evaluateClause(root, result);
+  if (typeof value === 'boolean') {
+    if (value) {
+      logger.debug(`${stringifyClause(clause)} is a tautology so can be ignored`);
+      return true;
+    }
+    // We have removed all false values, so nothing true is left
+    throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${
+      stringifyClause(clause)}`);
+  }
+
+  // Check if this clause can be reduced to a single conjunction
+  const simplifiedQuads = clauseToTriples(clause);
+  if (simplifiedQuads) {
+    return simplifiedQuads;
+  }
+
+  // Nothing was changed or could be deduced
+  if (result.positive === clause.positive && result.negative === clause.negative && result.clauses === clause.clauses) {
+    return;
+  }
+
+  return result;
+}
+
+export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boolean | undefined {
+  const result = createClause(clause);
+
+  // Remove duplicate triples/triples known to be true,
+  //   // if a value returns false this means the entire conjunction is false
+  if (removeSuperfluousTriples(root, result) === false) {
+    return false;
+  }
+
+  // Either a contradiction or all true values have been removed meaning the entire conjunction is true
+  const value = evaluateClause(root, result);
+  if (typeof value === 'boolean') {
+    if (!value) {
+      logger.debug(`${stringifyClause(clause)} is a contradiction so can be removed`);
+    }
+    return value;
+  }
+
+  // Nothing changed
+  if (result.positive === clause.positive && result.negative === clause.negative) {
+    return;
+  }
+
+  return result;
+}
+
+// TODO: input can be the original clause, will generate new clause
+export function simplifyLevel1Children(root: RootClause, clause: Clause): Clause | true {
+  const partial: Partial<Clause> = {};
 
   // Simplify the child clauses
   const removeClauseIdx = new Set<number>();
@@ -78,204 +151,135 @@ export function simplifyLevel1(root: RootClause, clause: Clause): Clause | true 
     if (simplified === false) {
       removeClauseIdx.add(idx);
     } else {
-      clauses = clauses ?? [ ...clause.clauses ];
-      clauses[idx] = simplified;
+      partial.clauses = partial.clauses ?? [ ...clause.clauses ];
+      partial.clauses[idx] = simplified;
       // Remove single triple clauses and put them directly into relevant store
       if (simplified.positive.length + simplified.negative.length === 1) {
         removeClauseIdx.add(idx);
         const side = simplified.positive.length === 1 ? 'positive' : 'negative';
-        quads[side] = quads[side] ?? [ ...clause[side] ];
-        quads[side]!.push(simplified[side][0]);
+        partial[side] = partial[side] ?? [ ...clause[side] ];
+        partial[side]!.push(simplified[side][0]);
       }
     }
   }
   if (removeClauseIdx.size > 0) {
-    clauses = clauses ?? [ ...clause.clauses ];
-    clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
+    partial.clauses = partial.clauses ?? [ ...clause.clauses ];
+    partial.clauses = partial.clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
   }
+  return createClause({ ...clause, ...partial });
+}
 
-  removeClauseIdx.clear();
+// TODO: input should be the new intermediate clause
+export function removeLevel1Supersets(clause: Clause): void {
   // A || (A && B) implies A
   // Need to make sure we use the new clauses array if there is one
-  for (const [ idx, child ] of (clauses ?? clause.clauses).entries()) {
+  const removeClauseIdx = new Set<number>();
+  for (const [ idx, child ] of clause.clauses.entries()) {
     // Needs to happen after previous block, so we still find contradictions
-    if (hasDisjunctionSubset(child, { ...clause, clauses: clauses ?? clause.clauses })) {
+    if (hasDisjunctionSubset(child, clause)) {
       removeClauseIdx.add(idx);
     }
   }
   if (removeClauseIdx.size > 0) {
-    clauses = clauses ?? [ ...clause.clauses ];
-    clauses = clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
+    clause.clauses = clause.clauses.filter((child, idx): boolean => !removeClauseIdx.has(idx));
   }
-
-  // Check if we have a tautology
-  if (isTautology(root, clause)) {
-    logger.debug(`${stringifyClause(clause)} is a tautology so can be ignored`);
-    return true;
-  }
-
-  // Remove duplicate and false triples
-  for (const side of [ 'positive', 'negative' ] as const) {
-    const clauseQuads = quads[side] ? quads[side]! : clause[side];
-    const removeIdx = new Set<number>();
-    const neg = side === 'negative';
-    for (const [ idxA, quadA ] of clauseQuads.entries()) {
-      // TODO: similar to simplifyLevel2 (like many parts of this function tbh)
-      const builtinResult = handleBuiltinCheck({ root, clause, quad: quadA });
-      if (typeof builtinResult === 'boolean') {
-        if (builtinResult === (side === 'positive')) {
-          // True
-          logger.debug(
-            `${stringifyQuad(quadA, side === 'negative')} is true so ${stringifyClause(clause)} can be ignored`,
-          );
-          return true;
-        }
-        // False
-        removeIdx.add(idxA);
-        logger.debug(
-          `${stringifyQuad(quadA, side === 'negative')} is false so can be removed from disjunction (builtin)`,
-        );
-        continue;
-      }
-
-      // Remove "duplicates"
-      for (const [ idxB, quadB ] of clauseQuads.entries()) {
-        // TODO: this prevents removing both B in A || B || B
-        if (idxA === idxB || removeIdx.has(idxB)) {
-          continue;
-        }
-        // TODO: `impliesQuad` can give wrong results since \forall x,y: f(x) | f(y) | h(y)
-        //       does not imply \forall x,y: f(x) | h(y)
-        // TODO: need to also take into account that \forall x: f(x) | f(A) does not imply \forall x: f(x)!
-        //       it could be that only f(A) is true for all values
-        //       \forall x: f(x) | g(x) | f(A) also does not imply \forall x: g(x) | f(A)!
-        // if (impliesQuad(quadB, quadA, root.quantifiers)) {
-        if (fancyEquals(quadA, quadB)) {
-          removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(quadB, neg)} implies ${
-            stringifyQuad(quadA, neg)} can be removed from disjunction (same disjunction)`);
-          break;
-        }
-      }
-      if (removeIdx.has(idxA)) {
-        continue;
-      }
-      // Remove false values
-      for (const rootQuad of root[neg ? 'positive' : 'negative']) {
-        // If (impliesQuad(quadA, quadB, root.quantifiers)) {
-        if (equalOrLeftUniversal(rootQuad, quadA, root.quantifiers)) {
-          removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(rootQuad, !neg)} is known so ${
-            stringifyQuad(quadA, neg)} can be removed from disjunction (root data)`);
-          break;
-        }
-      }
-    }
-    if (removeIdx.size > 0) {
-      quads[side] = clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx));
-    }
-  }
-
-  const result = createClause({
-    conjunction: false,
-    positive: quads.positive ?? clause.positive,
-    negative: quads.negative ?? clause.negative,
-    clauses: clauses ?? clause.clauses,
-  });
-
-  // We have removed all false values, so nothing true is left
-  if (result.clauses.length === 0 && result.positive.length === 0 && result.negative.length === 0) {
-    throw new Error(`Found a contradiction at root level, stopping execution. Caused by simplifying ${
-      stringifyClause(clause)}`);
-  }
-
-  const simplifiedQuads = clauseToTriples(clause);
-  if (simplifiedQuads) {
-    return simplifiedQuads;
-  }
-
-  // Putting this after the contradiction check in case initial input already has an empty surface
-  if (!quads.positive && !quads.negative && !clauses) {
-    return;
-  }
-
-  return result;
 }
 
-export function simplifyLevel2(root: RootClause, clause: Clause): Clause | boolean | undefined {
-  if (isContradiction(root, clause)) {
-    logger.debug(`${stringifyClause(clause)} is a contradiction with root data`);
-    return false;
+export enum BuiltinCheckRemove {
+  quad = 'quad',
+  clause = 'clause',
+}
+
+export function builtinCheck(options: BuiltinCallOptions, negated: boolean): BuiltinCheckRemove | undefined {
+  const builtinResult = handleBuiltinCheck(options);
+  if (builtinResult === undefined) {
+    return;
+  }
+  const signedBuiltinResult = builtinResult !== negated;
+  if (options.clause.conjunction === signedBuiltinResult) {
+    logger.debug(`Builtin ${stringifyQuad(options.quad, negated)} is ${
+      signedBuiltinResult} so can be removed from ${stringifyClause(options.clause)}`);
+    return BuiltinCheckRemove.quad;
   }
 
-  const quads: Partial<Pick<Clause, 'positive' | 'negative'>> = { positive: undefined, negative: undefined };
+  logger.debug(`Builtin ${stringifyQuad(options.quad, negated)} is ${
+    signedBuiltinResult} so ${stringifyClause(options.clause)} can be removed`);
+  return BuiltinCheckRemove.clause;
+}
 
+// TODO: input should be the new intermediate clause
+export function removeSuperfluousTriples(root: RootClause, clause: Clause): boolean | Clause {
+  // Remove duplicate and false triples
   for (const side of [ 'positive', 'negative' ] as const) {
-    const clauseQuads = clause[side];
     const removeIdx = new Set<number>();
-    for (const [ idxA, quadA ] of clauseQuads.entries()) {
+    for (const [ idxA, quad ] of clause[side].entries()) {
       // Check builtins
-      const builtinResult = handleBuiltinCheck({ root, clause, quad: quadA });
-      if (typeof builtinResult === 'boolean') {
-        if (builtinResult === (side === 'positive')) {
-          // True
-          removeIdx.add(idxA);
-          logger.debug(`${stringifyQuad(quadA, side === 'negative')
-          } is true so can be removed from conjunction (builtin)`);
-          continue;
-        } else {
-          // False
-          logger.debug(`${stringifyClause(clause)} is a contradiction (builtin)`);
-          return false;
-        }
+      const builtinResult = builtinCheck({ root, clause, quad }, side === 'negative');
+      if (builtinResult === BuiltinCheckRemove.clause) {
+        return !clause.conjunction;
       }
-
-      // Remove "duplicates"
-      for (const [ idxB, quadB ] of clauseQuads.entries()) {
-        if (idxA === idxB || removeIdx.has(idxB)) {
-          continue;
-        }
-        if (impliesQuad(quadB, quadA, root.quantifiers)) {
-          logger.debug(`${stringifyQuad(quadB)} implies ${
-            stringifyQuad(quadA)} can be removed from conjunction (same conjunction)`);
-          removeIdx.add(idxA);
-          break;
-        }
-      }
-      if (removeIdx.has(idxA)) {
-        continue;
-      }
-      // Remove true values
-      for (const rootQuad of root[side]) {
-        if (impliesQuad(rootQuad, quadA, root.quantifiers)) {
-          logger.debug(`${stringifyQuad(rootQuad)} implies ${
-            stringifyQuad(quadA)} can be removed from conjunction (root data)`);
-          removeIdx.add(idxA);
-          break;
-        }
+      if (builtinResult === BuiltinCheckRemove.quad) {
+        removeIdx.add(idxA);
       }
     }
     if (removeIdx.size > 0) {
-      quads[side] = clauseQuads.filter((quad, idx): boolean => !removeIdx.has(idx));
+      clause[side] = clause[side].filter((quad, idx): boolean => !removeIdx.has(idx));
     }
   }
 
-  const result = createClause({
-    conjunction: false,
-    positive: quads.positive ?? clause.positive,
-    negative: quads.negative ?? clause.negative,
-  });
-
-  if (result.positive.length === 0 && result.negative.length === 0) {
-    return true;
+  for (const side of [ 'positive', 'negative' ] as const) {
+    // Remove duplicate and false values
+    const removeIdx = findSuperfluousTriples(root, clause, side === 'negative');
+    if (removeIdx.size > 0) {
+      clause[side] = clause[side].filter((quad, idx): boolean => !removeIdx.has(idx));
+    }
   }
 
-  // Putting this after the tautology check in case initial input already has an empty surface
-  if (!quads.positive && !quads.negative) {
-    return;
+  return clause;
+}
+
+export function findSuperfluousTriples(root: RootClause, clause: Clause, negated: boolean): Set<number> {
+  const removeIdx = new Set<number>();
+  const side = negated ? 'negative' : 'positive';
+
+  for (const [ idxA, quadA ] of clause[side].entries()) {
+    for (const [ idxB, quadB ] of clause[side].entries()) {
+      // TODO: this prevents removing both B in A || B || B
+      if (idxA === idxB || removeIdx.has(idxB)) {
+        continue;
+      }
+      // TODO: `impliesQuad` can give wrong results for disjunctions since \forall x,y: f(x) | f(y) | h(y)
+      //       does not imply \forall x,y: f(x) | h(y)
+      // TODO: need to also take into account that \forall x: f(x) | f(A) does not imply \forall x: f(x)!
+      //       it could be that only f(A) is true for all values
+      //       \forall x: f(x) | g(x) | f(A) also does not imply \forall x: g(x) | f(A)!
+      if ((clause.conjunction ? impliesQuad : fancyEquals)(quadB, quadA, root.quantifiers)) {
+        logger.debug(`${stringifyQuad(quadB, negated)} implies ${
+          stringifyQuad(quadA, negated)} can be removed from ${stringifyClause(clause)}`);
+        removeIdx.add(idxA);
+        break;
+      }
+    }
   }
 
-  return result;
+  for (const [ idx, quad ] of clause[side].entries()) {
+    if (removeIdx.has(idx)) {
+      continue;
+    }
+    const rootNegated = clause.conjunction === negated;
+    const rootQuads = root[rootNegated ? 'negative' : 'positive'];
+    for (const rootQuad of rootQuads) {
+      if (impliesQuad(rootQuad, quad, root.quantifiers)) {
+        logger.debug(`${stringifyQuad(rootQuad, rootNegated)} is known so ${
+          stringifyQuad(quad, negated)} can be removed from ${stringifyClause(clause)}`);
+        removeIdx.add(idx);
+        break;
+      }
+    }
+  }
+  // TODO: might as well remove them at this point...
+
+  return removeIdx;
 }
 
 // TODO: Used to help simplify (A && B) || (A && B && C) to A && B
@@ -326,69 +330,36 @@ export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
 //       A || -A
 //       \exists x: f(x) || -(A)
 //       A || -B if either A or -B is known at root
-export function isTautology(root: RootClause, clause: Clause): boolean {
-  for (const positive of clause.positive) {
-    for (const negative of clause.negative) {
-      if (disjunctionTautology(positive, negative, root.quantifiers)) {
-        return true;
-      }
-    }
-  }
-
-  for (const rootPositive of root.positive) {
-    for (const positive of clause.positive) {
-      if (impliesQuad(rootPositive, positive, root.quantifiers)) {
-        return true;
-      }
-    }
-  }
-
-  for (const negative of clause.negative) {
-    for (const rootNegative of root.negative) {
-      if (impliesQuad(rootNegative, negative, root.quantifiers)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 // TODO: level 2
 //   A && -A
 //   \forall x: f(x) && -f(A)
 //   A && -B if either -A or B are known at root
-export function isContradiction(root: RootClause, clause: Clause): boolean {
+export function evaluateClause(root: RootClause, clause: Clause): boolean | undefined {
+  // We have removed all values, so result is true/false (depending on conjunction/disjunction)
+  if (clause.clauses.length === 0 && clause.positive.length === 0 && clause.negative.length === 0) {
+    return clause.conjunction;
+  }
+
   for (const positive of clause.positive) {
     for (const negative of clause.negative) {
-      if (conjunctionContradiction(positive, negative, root.quantifiers)) {
-        return true;
+      if ((clause.conjunction ? equalOrUniversal : equalOrExistential)(positive, negative, root.quantifiers)) {
+        return !clause.conjunction;
       }
     }
   }
 
-  // Due to negation we don't use impliesQuad here.
-  // f(A) && f(B) is a contradiction if -f(A) is known, or if \forall x: -f(x) is known.
-  // \exists x: f(x) && f(B) is not a contradiction if -f(A) is known.
-  // This is different from disjunction where f(A) implies a tautology in \exists x: f(x) || f(B)
-  // and \forall x: f(x) implies a tautology in f(A) || f(B).
-  for (const rootPositive of root.positive) {
-    // TODO: duplication?
-    for (const negative of clause.negative) {
-      if (equalOrLeftUniversal(rootPositive, negative, root.quantifiers)) {
-        return true;
+  // In conjunctions, we want to find quads that are the opposite of root quads, implying the conjunction is false
+  // In disjunctions, we want the same sign as that implies the disjunction is true
+  for (const side of [ 'positive', 'negative' ] as const) {
+    const otherSide = side === 'positive' ? 'negative' : 'positive';
+    for (const rootQuad of root[side]) {
+      for (const quad of clause.conjunction ? clause[otherSide] : clause[side]) {
+        if (impliesQuad(rootQuad, quad, root.quantifiers)) {
+          return !clause.conjunction;
+        }
       }
     }
   }
-  for (const rootNegative of root.negative) {
-    for (const positive of clause.positive) {
-      if (equalOrLeftUniversal(rootNegative, positive, root.quantifiers)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
 }
 
 // Returns a conjunction if there is a valid result
@@ -404,104 +375,4 @@ export function clauseToTriples(clause: Clause): Clause | undefined {
     return { ...clause, conjunction: true };
   }
   return clause.clauses[0];
-}
-
-export function compareTerms(
-  left: FancyQuad,
-  right: FancyQuad,
-  comparator: (termLeft: FancyTerm, termRight: FancyTerm) => boolean | undefined,
-): boolean {
-  for (const pos of QUAD_POSITIONS) {
-    const termLeft = left[pos];
-    const termRight = right[pos];
-    const result = comparator(termLeft, termRight);
-    if (result === undefined) {
-      continue;
-    }
-    return result;
-  }
-
-  return true;
-}
-
-// TODO: all the functions below have issues with for example the same blank node occurring twice in a quad,
-//       need to track implied bindings
-
-export function conjunctionContradiction(
-  positive: FancyQuad,
-  negative: FancyQuad,
-  quantifiers: Record<string, number>,
-): boolean {
-  return compareTerms(positive, negative, (termLeft, termRight): boolean | undefined => {
-    if (isUniversal(termLeft, quantifiers)) {
-      return;
-    }
-    if (isUniversal(termRight, quantifiers)) {
-      return;
-    }
-    // TODO: here and all other ones: recursive universal checks in lists/graphs
-    if (!fancyEquals(termLeft, termRight)) {
-      return false;
-    }
-  });
-}
-
-export function disjunctionTautology(
-  positive: FancyQuad,
-  negative: FancyQuad,
-  quantifiers: Record<string, number>,
-): boolean {
-  return compareTerms(positive, negative, (termLeft, termRight): boolean | undefined => {
-    if (isExistential(termLeft, quantifiers) && !isUniversal(termRight, quantifiers)) {
-      return;
-    }
-    if (isExistential(termRight, quantifiers) && !isUniversal(termLeft, quantifiers)) {
-      return;
-    }
-    if (!fancyEquals(termLeft, termRight)) {
-      return false;
-    }
-  });
-}
-
-export function equalOrLeftUniversal(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(left, right, (termLeft, termRight): boolean | undefined => {
-    if (isUniversal(termLeft, quantifiers)) {
-      return;
-    }
-    if (!fancyEquals(termLeft, termRight)) {
-      return false;
-    }
-  });
-}
-
-// TODO: this function is identical to equalOrLeftUniversal, currently here for semantic reasons
-export function impliesQuad(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(left, right, (termLeft, termRight): boolean | undefined => {
-    if (isUniversal(termLeft, quantifiers)) {
-      return;
-    }
-    // TODO: currently not using existentials as this breaks if you, for example,
-    //       have the same existential in several parts of a conjunction
-    //       e.g., \exists x: (f(x) && g(x)) || A can not be simplified to g(x) || A just because f(A) is known,
-    //       g(A) would also have to be known
-    // if (isExistential(termRight, quantifiers)) {
-    //   return;
-    // }
-    if (!fancyEquals(termLeft, termRight)) {
-      return false;
-    }
-  });
-}
-
-export function isUniversal(term: FancyTerm, quantifiers: Record<string, number>): term is BlankNode {
-  return term.termType === 'BlankNode' && isBlankNodeUniversal(term, quantifiers);
-}
-
-export function isExistential(term: FancyTerm, quantifiers: Record<string, number>): term is BlankNode {
-  return term.termType === 'BlankNode' && !isBlankNodeUniversal(term, quantifiers);
-}
-
-export function isBlankNodeUniversal(blankNode: BlankNode, quantifiers: Record<string, number>): boolean {
-  return (quantifiers[blankNode.value] ?? 0) % 2 === 1;
 }

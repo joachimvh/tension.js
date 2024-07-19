@@ -1,7 +1,7 @@
 import { lstat, readdir } from 'node:fs/promises';
 import { posix } from 'node:path';
 import type { Binding } from './BindUtil';
-import { applyBindings } from './BindUtil';
+import { applyBinding } from './BindUtil';
 import type { Clause, RootClause } from './ClauseUtil';
 import type { FancyQuad, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
@@ -92,7 +92,7 @@ IterableIterator<BuiltinBindResult> {
     const result = bindClauseBuiltins(root, clause, cache);
     if (result?.clause) {
       // Need to apply the bindings to any other occurrences of the same blank node in the clause
-      const bound = applyBindings(result.clause, result.binding) ?? result.clause;
+      const bound = applyBinding(result.clause, result.binding) ?? result.clause;
       logger.debug(`generated ${stringifyClause(bound)} by applying builtins in  ${stringifyClause(clause)}`);
       yield { idx, clause: bound };
     }

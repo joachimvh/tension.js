@@ -1,4 +1,4 @@
-import { applyBindings, applyBindingsToQuads, getBinding } from './BindUtil';
+import { applyBinding, getBinding } from './BindUtil';
 import type { Clause, RootClause } from './ClauseUtil';
 import { createClause, mergeData } from './ClauseUtil';
 import type { FancyQuad, FancyTerm } from './FancyUtil';
@@ -148,7 +148,7 @@ export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Cl
     clauses: finalClauses,
   });
 
-  result = applyBindings(result, overlap.binding) ?? result;
+  result = applyBinding(result, overlap.binding) ?? result;
 
   // TODO: it's possible that the removeClause contains even more information about things that can be removed
   //       e.g., A || (B && D) and (-A && -B) || C.
@@ -156,14 +156,14 @@ export function applySubClauseOverlap(overlap: ClauseOverlap, left: boolean): Cl
   const otherRemoveClause = overlap[otherSide].removeClause;
   const removeClauseIdx = new Set<number>();
   if (otherRemoveClause) {
-    let boundQuads = applyBindingsToQuads(otherRemoveClause.positive, overlap.binding) ?? otherRemoveClause.positive;
+    let boundQuads = applyBinding(otherRemoveClause.positive, overlap.binding) ?? otherRemoveClause.positive;
     for (const quad of boundQuads) {
       removeQuad(result.negative, quad);
       const idx = result.clauses.findIndex((clause): boolean =>
         clause.negative.some((child): boolean => fancyEquals(child, quad)));
       removeClauseIdx.add(idx);
     }
-    boundQuads = applyBindingsToQuads(otherRemoveClause.negative, overlap.binding) ?? otherRemoveClause.negative;
+    boundQuads = applyBinding(otherRemoveClause.negative, overlap.binding) ?? otherRemoveClause.negative;
     for (const quad of boundQuads) {
       removeQuad(result.positive, quad);
       const idx = result.clauses.findIndex((clause): boolean =>
@@ -214,7 +214,7 @@ export function applyTripleClauseOverlap(overlap: ClauseOverlap, left: boolean):
     negative: mergedNegative,
     clauses,
   });
-  result = applyBindings(result, overlap.binding) ?? result;
+  result = applyBinding(result, overlap.binding) ?? result;
 
   return result;
 }
@@ -285,7 +285,7 @@ export function findQuadOverlap(
   leftPositive: boolean,
   quantifiers: Record<string, number>,
 ): ClauseOverlap | undefined {
-  if (isClause(left.value)) {
+  if ('clauses' in left.value) {
     for (const side of [ 'positive', 'negative' ] as const) {
       for (const leftQuad of left.value[side]) {
         const overlap = findQuadOverlap(
@@ -304,7 +304,7 @@ export function findQuadOverlap(
   }
 
   // Left is a quad
-  if (isClause(right.value)) {
+  if ('clauses' in right.value) {
     for (const rightQuad of right.value[leftPositive ? 'negative' : 'positive']) {
       const overlap = findQuadOverlap(left, { clause: right.clause, value: rightQuad }, leftPositive, quantifiers);
       if (overlap) {
@@ -325,8 +325,4 @@ export function findQuadOverlap(
       binding,
     };
   }
-}
-
-export function isClause(value: Clause | FancyQuad): value is Clause {
-  return 'clauses' in value;
 }
