@@ -32,6 +32,6 @@
     "@tsconfig/node18": "^18.2.4",
     "@types/node": "^18.19.31",
     "opinionated-eslint-config": "^0.1.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.5.3"
   }
 }
