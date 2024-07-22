@@ -1,8 +1,9 @@
-# Tension
+# Tension: An RDF surfaces reasoner
 
-An RDF surfaces reasoner.
+[![npm version](https://badge.fury.io/js/rdf-tension.svg)](https://www.npmjs.com/package/rdf-tension)
 
-This is currently a very incomplete README to just have something at least.
+An [RDF Surfaces](https://w3c-cg.github.io/rdfsurfaces/) reasoner.
+
 Some random notes:
 
 * Program can be run with `node bin/tension.js --help` to see the available CLI options.
