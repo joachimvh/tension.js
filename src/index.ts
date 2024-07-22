@@ -1,3 +1,5 @@
+// TODO: look into actually cleaning up the comments below
+
 // TODO: look into ((f(A) || g(A)) && \exists x: (f(x) || g(x)) => TEST)
 
 // TODO: random notes, should perhaps keep these to prevent making the same mistakes
@@ -70,6 +72,7 @@
 // \forall x, y: g(x) || (f(x) && f(y)) is different from \forall x, y, z: g(z) || (f(x) && f(y))
 
 export * from './BindUtil';
+export * from './BuiltinUtil';
 export * from './ClauseUtil';
 export * from './FancyUtil';
 export * from './LogUtil';
@@ -78,3 +81,23 @@ export * from './ParseUtil';
 export * from './ReasonUtil';
 export * from './Run';
 export * from './SimplifyUtil';
+export * from './TermUtil';
+
+// Builtins
+export * from './builtins/list/append';
+export * from './builtins/list/first';
+export * from './builtins/list/in';
+export * from './builtins/list/last';
+export * from './builtins/list/length';
+export * from './builtins/list/member';
+export * from './builtins/list/remove';
+
+export * from './builtins/log/equalTo';
+export * from './builtins/log/notEqualTo';
+
+export * from './builtins/math/difference';
+export * from './builtins/math/greaterThan';
+export * from './builtins/math/remainder';
+export * from './builtins/math/sum';
+
+export * from './builtins/time/localTime';
