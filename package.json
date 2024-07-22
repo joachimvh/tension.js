@@ -1,5 +1,5 @@
 {
-  "name": "tension.js",
+  "name": "rdf-tension",
   "version": "0.1.0",
   "description": "An RDF surfaces reasoner",
   "author": "Joachim Van Herwegen <joachim.vanherwegen@ugent.be>",

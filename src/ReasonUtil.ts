@@ -3,7 +3,8 @@ import { applyBinding, findBindResults } from './BindUtil';
 import type { BuiltinCache } from './BuiltinUtil';
 import { generateBuiltinResultClauses } from './BuiltinUtil';
 import type { Clause, RootClause } from './ClauseUtil';
-import { isDisjunctionSubset } from './ClauseUtil';
+import { isDisjunctionSubset, POSITIVE_NEGATIVE } from './ClauseUtil';
+import type { FancyQuad } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import type { OverlapCache } from './OverlapUtil';
 import { applyClauseOverlap, findOverlappingClause } from './OverlapUtil';
@@ -18,7 +19,15 @@ export type ReasonCaches = {
   overlapCache: OverlapCache;
 };
 
-export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): void {
+export type QuadResult = {
+  type: 'Quad';
+  value: FancyQuad;
+  positive: boolean;
+};
+
+export type ReasonResult = QuadResult;
+
+export function* reason(root: RootClause, answerClauses: Clause[], maxSteps = 5): IterableIterator<ReasonResult> {
   const cache: ReasonCaches = {
     builtinCache: new WeakSet(),
     bindingCache: {
@@ -29,11 +38,29 @@ export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5):
   };
   let count = 0;
 
+  // TODO: should do refactors so we can just yield results from the functions directly instead of doing this
+  const resultQuads = new Set<FancyQuad>();
+  yield* yieldQuads(root, resultQuads);
+
   while ((maxSteps <= 0 ? true : count < maxSteps) && reasonStep(root, answerClauses, cache)) {
+    yield* yieldQuads(root, resultQuads);
     count += 1;
     logger.debug(`COMPLETED STEP ${count}`);
   }
+  yield* yieldQuads(root, resultQuads);
   logger.debug('FINISHED');
+}
+
+export function* yieldQuads(root: RootClause, resultQuads: Set<FancyQuad>): IterableIterator<ReasonResult> {
+  for (const side of POSITIVE_NEGATIVE) {
+    for (const quad of root[side]) {
+      if (resultQuads.has(quad)) {
+        continue;
+      }
+      yield { type: 'Quad', value: quad, positive: side === 'positive' };
+      resultQuads.add(quad);
+    }
+  }
 }
 
 export function reasonStep(root: RootClause, answerClauses: Clause[], caches: ReasonCaches): boolean {

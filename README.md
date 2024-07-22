@@ -1,4 +1,4 @@
-# Tension.js
+# Tension
 
 An RDF surfaces reasoner.
 
@@ -9,10 +9,35 @@ Some random notes:
 * Run with `info` logging (default) to only see the deduced triples, run with `debug` to see what is going on internally.
 * Probably not completely logically sound.
   Triples with the same blank node twice or some weird existential/universal combinations will probably trip it up.
-* Also not handling existentials that well yet.
-* No list support (except for graffiti)
-* Output only through logging currently, no way yet to use this in a bigger project.
+* Not handling existentials that well yet.
 * Tests can be found at <https://github.com/eyereasoner/rdfsurfaces-tests>.
+
+## Using as npm dependency
+
+`npm install rdf-tension`
+
+```ts
+import { readFileSync } from 'node:fs';
+import { run } from 'rdf-tension';
+
+const input = readFileSync('my/surfaces/file.n3s').toString();
+
+// All options besides `input` are optional.
+// The values below are the defaults.
+const options = {
+  input,
+  // Set this to 0 for infinite steps
+  maxSteps: 5,
+  ignoreAnswer: false,
+  logLevle: 'error',
+};
+
+// Note that the resulting quads can also have a List or Graph as term value
+for await (const { quad, positive } of run(options)) {
+  // Do something with the results
+  myFunc(quad, positive);
+}
+```
 
 ## How it works
 

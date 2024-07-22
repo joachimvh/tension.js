@@ -158,7 +158,7 @@ export function simplifyLevel1Children(root: RootClause, clause: Clause): Clause
         removeClauseIdx.add(idx);
         const side = simplified.positive.length === 1 ? 'positive' : 'negative';
         partial[side] = partial[side] ?? [ ...clause[side] ];
-        partial[side]!.push(simplified[side][0]);
+        partial[side].push(simplified[side][0]);
       }
     }
   }

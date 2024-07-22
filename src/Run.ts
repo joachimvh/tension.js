@@ -12,11 +12,19 @@ import {
 import type { LogLevel } from './LogUtil';
 import { getLogger, LOG_LEVELS, setLogLevel } from './LogUtil';
 import { parseRoot, stringifyClause, stringifyQuad } from './ParseUtil';
+import type { ReasonResult } from './ReasonUtil';
 import { reason } from './ReasonUtil';
 
 const logger = getLogger('Run');
 
-export async function run(args: string[]): Promise<void> {
+export type TensionOptions = {
+  maxSteps?: number;
+  ignoreAnswer?: boolean;
+  logLevel?: LogLevel;
+  input: string;
+};
+
+export async function runCli(args: string[]): Promise<void> {
   const program = new Command()
     .name('node bin/tension.js')
     .showHelpAfterError()
@@ -28,7 +36,7 @@ export async function run(args: string[]): Promise<void> {
     .addOption(new Option(
       '-l, --logLevel <level>',
       'logger level, currently using info/debug',
-    ).choices(LOG_LEVELS).default('info'));
+    ).choices(LOG_LEVELS).default('info' as const));
 
   program.parse(args);
 
@@ -43,13 +51,10 @@ export async function run(args: string[]): Promise<void> {
     program.error('Either a file or string input is required');
   }
 
-  setLogLevel(opts.logLevel as LogLevel);
-
   if (opts.timer) {
     console.time('timer');
   }
 
-  const maxSteps = Number.parseInt(opts.steps, 10);
   let n3: string;
   if (opts.file) {
     n3 = readFileSync(opts.file).toString();
@@ -58,7 +63,25 @@ export async function run(args: string[]): Promise<void> {
     n3 = isUrl(input) ? await (await fetch(input)).text() : input;
   }
 
-  const parsed = parseRoot(n3);
+  // eslint-disable-next-line unused-imports/no-unused-vars
+  for await (const result of run({
+    input: n3,
+    logLevel: opts.logLevel ?? 'info',
+    ignoreAnswer: opts.ignoreAnswer,
+    maxSteps: opts.steps ? Number.parseInt(opts.steps, 10) : undefined,
+  })) {
+    // Going through all results to know when to stop timer
+  }
+
+  if (opts.timer) {
+    console.timeEnd('timer');
+  }
+}
+
+export async function* run(opts: TensionOptions): AsyncIterableIterator<ReasonResult> {
+  setLogLevel(opts.logLevel ?? 'error');
+
+  const parsed = parseRoot(opts.input);
   const formula = pullGraffitiUp(removeDuplicateBlankNodes(parsed));
   const root = toClause(formula);
   await loadBuiltins();
@@ -73,14 +96,10 @@ export async function run(args: string[]): Promise<void> {
       logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
     }
   }
-  reason(root, answerClauses, maxSteps);
-
-  if (opts.timer) {
-    console.timeEnd('timer');
-  }
+  yield* reason(root, answerClauses, opts.maxSteps);
 }
 
-function isUrl(input: string): boolean {
+export function isUrl(input: string): boolean {
   let url;
 
   try {
