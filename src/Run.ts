@@ -93,7 +93,7 @@ export async function* run(opts: TensionOptions): AsyncIterableIterator<ReasonRe
   // Test framework would otherwise not see triple that is needed and already in root
   for (const side of POSITIVE_NEGATIVE) {
     for (const quad of root[side]) {
-      logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
+      logger.info(`Deduced ${stringifyQuad(quad, side === 'positive')}`);
     }
   }
   yield* reason(root, answerClauses, opts.maxSteps);

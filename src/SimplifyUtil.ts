@@ -60,7 +60,7 @@ export function simplifyRoot(root: RootClause): boolean {
 export function handleConjunctionResult(root: RootClause, conjunction: Clause): void {
   for (const side of POSITIVE_NEGATIVE) {
     for (const quad of conjunction[side]) {
-      logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
+      logger.info(`Deduced ${stringifyQuad(quad, side === 'positive')}`);
       root[side].push(quad);
     }
   }
@@ -190,19 +190,19 @@ export enum BuiltinCheckRemove {
   clause = 'clause',
 }
 
-export function builtinCheck(options: BuiltinCallOptions, negated: boolean): BuiltinCheckRemove | undefined {
+export function builtinCheck(options: BuiltinCallOptions, positive: boolean): BuiltinCheckRemove | undefined {
   const builtinResult = handleBuiltinCheck(options);
   if (builtinResult === undefined) {
     return;
   }
-  const signedBuiltinResult = builtinResult !== negated;
+  const signedBuiltinResult = builtinResult === positive;
   if (options.clause.conjunction === signedBuiltinResult) {
-    logger.debug(`Builtin ${stringifyQuad(options.quad, negated)} is ${
+    logger.debug(`Builtin ${stringifyQuad(options.quad, positive)} is ${
       signedBuiltinResult} so can be removed from ${stringifyClause(options.clause)}`);
     return BuiltinCheckRemove.quad;
   }
 
-  logger.debug(`Builtin ${stringifyQuad(options.quad, negated)} is ${
+  logger.debug(`Builtin ${stringifyQuad(options.quad, positive)} is ${
     signedBuiltinResult} so ${stringifyClause(options.clause)} can be removed`);
   return BuiltinCheckRemove.clause;
 }
@@ -214,7 +214,7 @@ export function removeSuperfluousTriples(root: RootClause, clause: Clause): bool
     const removeIdx = new Set<number>();
     for (const [ idxA, quad ] of clause[side].entries()) {
       // Check builtins
-      const builtinResult = builtinCheck({ root, clause, quad }, side === 'negative');
+      const builtinResult = builtinCheck({ root, clause, quad }, side === 'positive');
       if (builtinResult === BuiltinCheckRemove.clause) {
         return !clause.conjunction;
       }
@@ -229,7 +229,7 @@ export function removeSuperfluousTriples(root: RootClause, clause: Clause): bool
 
   for (const side of POSITIVE_NEGATIVE) {
     // Remove duplicate and false values
-    const removeIdx = findSuperfluousTriples(root, clause, side === 'negative');
+    const removeIdx = findSuperfluousTriples(root, clause, side === 'positive');
     if (removeIdx.size > 0) {
       clause[side] = clause[side].filter((quad, idx): boolean => !removeIdx.has(idx));
     }
@@ -238,9 +238,9 @@ export function removeSuperfluousTriples(root: RootClause, clause: Clause): bool
   return clause;
 }
 
-export function findSuperfluousTriples(root: RootClause, clause: Clause, negated: boolean): Set<number> {
+export function findSuperfluousTriples(root: RootClause, clause: Clause, positive: boolean): Set<number> {
   const removeIdx = new Set<number>();
-  const side = negated ? 'negative' : 'positive';
+  const side = positive ? 'positive' : 'negative';
 
   for (const [ idxA, quadA ] of clause[side].entries()) {
     for (const [ idxB, quadB ] of clause[side].entries()) {
@@ -254,8 +254,8 @@ export function findSuperfluousTriples(root: RootClause, clause: Clause, negated
       //       it could be that only f(A) is true for all values
       //       \forall x: f(x) | g(x) | f(A) also does not imply \forall x: g(x) | f(A)!
       if ((clause.conjunction ? impliesQuad : fancyEquals)(quadB, quadA, root.quantifiers)) {
-        logger.debug(`${stringifyQuad(quadB, negated)} implies ${
-          stringifyQuad(quadA, negated)} can be removed from ${stringifyClause(clause)}`);
+        logger.debug(`${stringifyQuad(quadB, positive)} implies ${
+          stringifyQuad(quadA, positive)} can be removed from ${stringifyClause(clause)}`);
         removeIdx.add(idxA);
         break;
       }
@@ -266,12 +266,12 @@ export function findSuperfluousTriples(root: RootClause, clause: Clause, negated
     if (removeIdx.has(idx)) {
       continue;
     }
-    const rootNegated = clause.conjunction === negated;
-    const rootQuads = root[rootNegated ? 'negative' : 'positive'];
+    const rootPositive = clause.conjunction === positive;
+    const rootQuads = root[rootPositive ? 'positive' : 'negative'];
     for (const rootQuad of rootQuads) {
       if (impliesQuad(rootQuad, quad, root.quantifiers)) {
-        logger.debug(`${stringifyQuad(rootQuad, rootNegated)} is known so ${
-          stringifyQuad(quad, negated)} can be removed from ${stringifyClause(clause)}`);
+        logger.debug(`${stringifyQuad(rootQuad, rootPositive)} is known so ${
+          stringifyQuad(quad, positive)} can be removed from ${stringifyClause(clause)}`);
         removeIdx.add(idx);
         break;
       }
@@ -293,7 +293,7 @@ export function hasDisjunctionSubset(clause: Clause, parent: Clause): boolean {
   }
   for (const quad of clause.negative) {
     if (parent.negative.some((parentQuad): boolean => fancyEquals(quad, parentQuad))) {
-      logger.debug(`${stringifyQuad(quad, true)} implies ${
+      logger.debug(`${stringifyQuad(quad, false)} implies ${
         stringifyClause(clause)} can be removed from disjunction (disjunction subset)`);
       return true;
     }

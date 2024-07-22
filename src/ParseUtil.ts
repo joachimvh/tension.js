@@ -232,14 +232,14 @@ export function stringifyClause(clause: Clause): string {
     members.push(stringifyQuad(quad));
   }
   for (const quad of clause.negative) {
-    members.push(stringifyQuad(quad, true));
+    members.push(stringifyQuad(quad, false));
   }
   members.push(...clause.clauses.map((child): string => `(${stringifyClause(child)})`));
   return members.join(` ${clause.conjunction ? '&&' : '||'} `);
 }
 
-export function stringifyQuad(quad: FancyQuad, negated = false): string {
-  return `${negated ? '-' : ''}(${stringifyTerm(quad.subject)} ${
+export function stringifyQuad(quad: FancyQuad, positive = true): string {
+  return `${positive ? '' : '-'}(${stringifyTerm(quad.subject)} ${
     stringifyTerm(quad.predicate)} ${stringifyTerm(quad.object)})`;
 }
 
