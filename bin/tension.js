@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-const { run } = require('..');
+const { runCli } = require('..');
 
-run(process.argv);
+runCli(process.argv);
