@@ -1,15 +1,13 @@
-import { inspect } from 'node:util';
 import type { BindCache } from './BindUtil';
-import { applyBinding, findBindings } from './BindUtil';
+import { applyBinding, findBindResults } from './BindUtil';
 import type { BuiltinCache } from './BuiltinUtil';
 import { generateBuiltinResultClauses } from './BuiltinUtil';
 import type { Clause, RootClause } from './ClauseUtil';
 import { isDisjunctionSubset } from './ClauseUtil';
-import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import type { OverlapCache } from './OverlapUtil';
 import { applyClauseOverlap, findOverlappingClause } from './OverlapUtil';
-import { stringifyClause, stringifyQuad } from './ParseUtil';
+import { stringifyClause } from './ParseUtil';
 import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
 const logger = getLogger('Reason');
@@ -26,7 +24,6 @@ export function reason(root: RootClause, answerClauses: Clause[], maxSteps = 5):
     bindingCache: {
       clauses: new WeakSet(),
       quads: new WeakSet(),
-      bindings: [],
     },
     overlapCache: new WeakMap(),
   };
@@ -61,30 +58,16 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
   }
   root.clauses.push(...newClauses);
 
-  for (const binding of findBindings(root, caches.bindingCache)) {
-    newClauses = [];
-    logger.debug(`Applying binding ${inspect(binding)}`);
-    for (const clause of root.clauses) {
-      const bound = applyBinding(clause, binding);
-      if (bound) {
-        change = handleNewClause(root, bound, newClauses) || change;
-      }
-    }
-    // Pushing every iteration here so next bindings are applied to results generated here.
-    // Can not wait for next step because of binding cache, alternative would be to not have that cache.
-    root.clauses.push(...newClauses);
-
-    // TODO: better way to check if a quad should be checked (per quad list of blank nodes in it?)
-    for (const side of [ 'positive', 'negative' ] as const) {
-      for (const quad of root[side]) {
-        const boundQuad = applyBinding(quad, binding);
-        if (boundQuad && !root[side].some((oldQuad): boolean => fancyEquals(boundQuad, oldQuad))) {
-          root[side].push(boundQuad);
-          logger.info(`Deduced ${stringifyQuad(boundQuad, side === 'negative')}`);
-        }
-      }
+  // TODO: need way to also find potential bindings on root quads containing universals
+  newClauses = [];
+  for (const { binding, clause } of findBindResults(root, caches.bindingCache)) {
+    const bound = applyBinding(clause, binding);
+    if (bound) {
+      logger.debug(`generated ${stringifyClause(bound)} by applying ${JSON.stringify(binding)}`);
+      change = handleNewClause(root, bound, newClauses) || change;
     }
   }
+  root.clauses.push(...newClauses);
 
   while (simplifyRoot(root)) {
     logger.debug(`Simplified root to ${stringifyClause(root)}`);

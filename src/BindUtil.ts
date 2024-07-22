@@ -9,19 +9,19 @@ export type Binding = Record<string, FancyTerm>;
 export type BindCache = {
   clauses: WeakSet<Clause>;
   quads: WeakSet<FancyQuad>;
-  bindings: Binding[];
+};
+
+export type BindResult = {
+  binding: Binding;
+  clause: Clause;
 };
 
 // Using a WeakSet so clauses that get removed from root don't get checked afterwards
-export function* findBindings(root: RootClause, cache?: BindCache): IterableIterator<Binding> {
-  cache = cache ?? { clauses: new WeakSet(), quads: new WeakSet(), bindings: []};
+export function* findBindResults(root: RootClause, cache?: BindCache): IterableIterator<BindResult> {
+  cache = cache ?? { clauses: new WeakSet(), quads: new WeakSet() };
   for (const clause of root.clauses) {
     for (const binding of findClauseBindings(root, clause, cache)) {
-      if (cache.bindings.some((cached): boolean => isSameBinding(binding, cached))) {
-        continue;
-      }
-      yield binding;
-      cache.bindings.push(binding);
+      yield { clause, binding };
     }
   }
   // Only add root quads after having checked with the clauses
