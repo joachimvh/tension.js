@@ -3,6 +3,7 @@ import { posix } from 'node:path';
 import type { Binding } from './BindUtil';
 import { applyBinding } from './BindUtil';
 import type { Clause, RootClause } from './ClauseUtil';
+import { POSITIVE_NEGATIVE } from './ClauseUtil';
 import type { FancyQuad, FancyTerm } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import { stringifyClause } from './ParseUtil';
@@ -132,7 +133,7 @@ export function bindClauseBuiltins(root: RootClause, clause: Clause, cache: Buil
     newClause.clauses = newClause.clauses.filter((child, idx): boolean => !removeClauseSet.has(idx));
   }
 
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     const removeSet = new Set<number>();
     for (const [ idx, quad ] of clause[side].entries()) {
       const builtinBinding = handleBuiltinBind({ root, clause, quad });

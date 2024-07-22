@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { Command, Option } from '@commander-js/extra-typings';
 import { loadBuiltins } from './BuiltinUtil';
-import { findAnswerClauses, pullGraffitiUp, removeDuplicateBlankNodes, toClause } from './ClauseUtil';
+import {
+  findAnswerClauses,
+  POSITIVE_NEGATIVE,
+  pullGraffitiUp,
+  removeDuplicateBlankNodes,
+  toClause,
+} from './ClauseUtil';
 import type { LogLevel } from './LogUtil';
 import { getLogger, LOG_LEVELS, setLogLevel } from './LogUtil';
 import { parseRoot, stringifyClause, stringifyQuad } from './ParseUtil';
@@ -62,7 +68,7 @@ export async function run(args: string[]): Promise<void> {
   logger.debug(`Quantifier levels: ${inspect(root.quantifiers)}`);
   logger.debug(`Starting clause: ${stringifyClause(root)}`);
   // Test framework would otherwise not see triple that is needed and already in root
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     for (const quad of root[side]) {
       logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
     }

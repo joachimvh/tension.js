@@ -1,7 +1,7 @@
 import type { BuiltinCallOptions } from './BuiltinUtil';
 import { handleBuiltinCheck } from './BuiltinUtil';
 import type { Clause, RootClause } from './ClauseUtil';
-import { createClause } from './ClauseUtil';
+import { createClause, negateType, POSITIVE_NEGATIVE } from './ClauseUtil';
 import {
   equalOrExistential,
   equalOrUniversal,
@@ -58,7 +58,7 @@ export function simplifyRoot(root: RootClause): boolean {
 
 // Adds the triples of a conjunction directly to the root.
 export function handleConjunctionResult(root: RootClause, conjunction: Clause): void {
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     for (const quad of conjunction[side]) {
       logger.info(`Deduced ${stringifyQuad(quad, side === 'negative')}`);
       root[side].push(quad);
@@ -210,7 +210,7 @@ export function builtinCheck(options: BuiltinCallOptions, negated: boolean): Bui
 // TODO: input should be the new intermediate clause
 export function removeSuperfluousTriples(root: RootClause, clause: Clause): boolean | Clause {
   // Remove duplicate and false triples
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     const removeIdx = new Set<number>();
     for (const [ idxA, quad ] of clause[side].entries()) {
       // Check builtins
@@ -227,7 +227,7 @@ export function removeSuperfluousTriples(root: RootClause, clause: Clause): bool
     }
   }
 
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     // Remove duplicate and false values
     const removeIdx = findSuperfluousTriples(root, clause, side === 'negative');
     if (removeIdx.size > 0) {
@@ -350,10 +350,9 @@ export function evaluateClause(root: RootClause, clause: Clause): boolean | unde
 
   // In conjunctions, we want to find quads that are the opposite of root quads, implying the conjunction is false
   // In disjunctions, we want the same sign as that implies the disjunction is true
-  for (const side of [ 'positive', 'negative' ] as const) {
-    const otherSide = side === 'positive' ? 'negative' : 'positive';
+  for (const side of POSITIVE_NEGATIVE) {
     for (const rootQuad of root[side]) {
-      for (const quad of clause.conjunction ? clause[otherSide] : clause[side]) {
+      for (const quad of clause.conjunction ? clause[negateType(side)] : clause[side]) {
         if (impliesQuad(rootQuad, quad, root.quantifiers)) {
           return !clause.conjunction;
         }

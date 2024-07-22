@@ -1,5 +1,5 @@
 import type { Clause, RootClause } from './ClauseUtil';
-import { createClause } from './ClauseUtil';
+import { createClause, POSITIVE_NEGATIVE } from './ClauseUtil';
 import type { FancyQuad, FancyTerm } from './FancyUtil';
 import { fancyEquals, isUniversal } from './FancyUtil';
 import { QUAD_POSITIONS } from './ParseUtil';
@@ -39,7 +39,7 @@ export function* findClauseBindings(root: RootClause, clause: Clause, cache: Bin
   for (const child of clause.clauses) {
     yield* findClauseBindings(root, child, cache);
   }
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     for (const rootQuad of root[side]) {
       if (cachedClause && cache.quads.has(rootQuad)) {
         continue;
@@ -58,7 +58,7 @@ IterableIterator<Binding> {
   for (const child of clause.clauses) {
     yield* findRootQuadBindings(rootQuad, child, quantifiers);
   }
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     for (const quad of clause[side]) {
       const binding = getBinding(rootQuad, quad, quantifiers);
       if (binding && Object.keys(binding).length > 0) {

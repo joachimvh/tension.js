@@ -20,6 +20,12 @@ export type RootClause = Clause & {
   quantifiers: Record<string, number>;
 };
 
+export const POSITIVE_NEGATIVE = [ 'positive', 'negative' ] as const;
+export function negateType<T extends typeof POSITIVE_NEGATIVE[number]>(side: T):
+T extends 'positive' ? 'negative' : 'positive' {
+  return (side === 'positive' ? 'negative' : 'positive') as T extends 'positive' ? 'negative' : 'positive';
+}
+
 export function createClause(options: Partial<Clause> & { conjunction: boolean }): Clause {
   return {
     ...options,
@@ -226,7 +232,7 @@ export function* crossProductClauses(clauses: LeafClause[], conjunction: boolean
   }
   const clause = clauses.pop()!;
   for (const product of crossProductClauses(clauses, conjunction)) {
-    for (const side of [ 'positive', 'negative' ] as const) {
+    for (const side of POSITIVE_NEGATIVE) {
       for (const quad of clause[side]) {
         yield createClause({
           conjunction: product.conjunction,
@@ -294,7 +300,7 @@ export function isDisjunctionSubset(
   // Although you could see f(A) as being a subset of ∀x: f(x),
   // we still need f(A) to make our reasoning steps work,
   // which is why we only check equality here.
-  for (const side of [ 'positive', 'negative' ] as const) {
+  for (const side of POSITIVE_NEGATIVE) {
     // For each left quad, check if we can find at least one matching right quad
     for (const leftQuad of left[side]) {
       let match = false;

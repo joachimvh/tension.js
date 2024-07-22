@@ -1,6 +1,6 @@
 import { applyBinding, getBinding } from './BindUtil';
 import type { Clause, RootClause } from './ClauseUtil';
-import { createClause, mergeData } from './ClauseUtil';
+import { createClause, mergeData, POSITIVE_NEGATIVE } from './ClauseUtil';
 import type { FancyQuad, FancyTerm } from './FancyUtil';
 import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
@@ -233,29 +233,20 @@ export function removeQuad(quads: FancyQuad[], quad: FancyQuad): void {
 export function getClauseOverlap(left: Clause, right: Clause, quantifiers: Record<string, number>):
   ClauseOverlap | undefined {
   // Check for overlap with all left triples/clauses and right triples/clauses
-  for (const side of [ 'positive', 'negative', 'clauses' ] as const) {
-    const otherSide = side === 'positive' ? 'negative' : 'positive';
-    for (const leftQuad of left[side]) {
-      for (const rightQuad of right[otherSide]) {
-        const overlap = findQuadOverlap(
-          { clause: left, value: leftQuad },
-          { clause: right, value: rightQuad },
-          side === 'positive',
-          quantifiers,
-        );
-        if (overlap) {
-          return overlap;
-        }
+  for (const leftSide of [ ...POSITIVE_NEGATIVE, 'clauses' ] as const) {
+    for (const rightSide of [ ...POSITIVE_NEGATIVE, 'clauses' ] as const) {
+      if (leftSide === rightSide && leftSide !== 'clauses') {
+        // We are looking for A and -A, so comparing same sides doesn't make sense
+        continue;
       }
-
-      // `otherSide` is "positive" if `side` is "clauses", so here we also compare with the negative ones
-      if (side === 'clauses') {
-        for (const rightQuad of right.negative) {
-          // `leftPositive` value is irrelevant here
-          const overlap = findQuadOverlap(
-            { clause: left, value: leftQuad },
+      for (const leftEntry of left[leftSide]) {
+        for (const rightQuad of right[rightSide]) {
+          const overlap = findEntryOverlap(
+            { clause: left, value: leftEntry },
             { clause: right, value: rightQuad },
-            true,
+            // If left side is a clause the sign will depend on the quad on the right side.
+            // If both are clauses the value here doesn't matter.
+            leftSide === 'clauses' ? rightSide === 'negative' : leftSide === 'positive',
             quantifiers,
           );
           if (overlap) {
@@ -263,32 +254,20 @@ export function getClauseOverlap(left: Clause, right: Clause, quantifiers: Recor
           }
         }
       }
-
-      for (const rightClause of right.clauses) {
-        const overlap = findQuadOverlap(
-          { clause: left, value: leftQuad },
-          { clause: right, value: rightClause },
-          side === 'positive',
-          quantifiers,
-        );
-        if (overlap) {
-          return overlap;
-        }
-      }
     }
   }
 }
 
-export function findQuadOverlap(
+export function findEntryOverlap(
   left: { clause: Clause; value: Clause | FancyQuad },
   right: { clause: Clause; value: Clause | FancyQuad },
   leftPositive: boolean,
   quantifiers: Record<string, number>,
 ): ClauseOverlap | undefined {
   if ('clauses' in left.value) {
-    for (const side of [ 'positive', 'negative' ] as const) {
+    for (const side of POSITIVE_NEGATIVE) {
       for (const leftQuad of left.value[side]) {
-        const overlap = findQuadOverlap(
+        const overlap = findEntryOverlap(
           { clause: left.clause, value: leftQuad },
           right,
           side === 'positive',
@@ -303,10 +282,12 @@ export function findQuadOverlap(
     return;
   }
 
+  // TODO: implementing this as swapping the parameters in a recursive call does not work for some reason,
+  //       need to investigate as that would simplify code
   // Left is a quad
   if ('clauses' in right.value) {
     for (const rightQuad of right.value[leftPositive ? 'negative' : 'positive']) {
-      const overlap = findQuadOverlap(left, { clause: right.clause, value: rightQuad }, leftPositive, quantifiers);
+      const overlap = findEntryOverlap(left, { clause: right.clause, value: rightQuad }, leftPositive, quantifiers);
       if (overlap) {
         overlap.right.removeClause = right.value;
         return overlap;
