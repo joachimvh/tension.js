@@ -155,7 +155,7 @@ export function handleNewClause(
     newClauses.some((child): boolean => isDisjunctionSubset(child, simplified, root.quantifiers))) {
     return false;
   }
-  logger.debug(`Storing new clause: ${stringifyClause(simplified)}`);
+  logger.verbose(`Storing new clause: ${stringifyClause(simplified)}`);
   newClauses.push(simplified);
   return true;
 }

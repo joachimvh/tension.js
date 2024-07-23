@@ -35,7 +35,7 @@ export async function runCli(args: string[]): Promise<void> {
     .option('-t,--timer', 'runs a timer')
     .addOption(new Option(
       '-l, --logLevel <level>',
-      'logger level, currently using info/debug',
+      'logger level. Info for deduced quads, verbose for deduced clauses, debug for steps',
     ).choices(LOG_LEVELS).default('info' as const));
 
   program.parse(args);
