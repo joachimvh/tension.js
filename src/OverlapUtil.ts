@@ -4,7 +4,7 @@ import { createClause, mergeData, POSITIVE_NEGATIVE } from './ClauseUtil';
 import type { FancyQuad, FancyTerm } from './FancyUtil';
 import { fancyEquals } from './FancyUtil';
 import { getLogger } from './LogUtil';
-import { stringifyClause } from './ParseUtil';
+import { stringifyBinding, stringifyClause } from './ParseUtil';
 
 const logger = getLogger('Overlap');
 
@@ -89,7 +89,8 @@ export function applyClauseOverlap(overlap: ClauseOverlap): Clause[] {
   }
   for (const clause of results) {
     logger.debug(`generated ${stringifyClause(clause)} from ${
-      stringifyClause(overlap.left.clause)} and ${stringifyClause(overlap.right.clause)}`);
+      stringifyClause(overlap.left.clause)} and ${stringifyClause(overlap.right.clause)
+    } using binding ${stringifyBinding(overlap.binding)}`);
   }
   return results;
 }

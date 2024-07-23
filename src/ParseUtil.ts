@@ -2,6 +2,7 @@ import type { BlankNode } from '@rdfjs/types';
 import { DataFactory } from 'n3';
 import { N3Parser } from 'n3-parser.js';
 import { stringToTerm } from 'rdf-string';
+import type { Binding } from './BindUtil';
 import type { Clause } from './ClauseUtil';
 import type { FancyQuad, FancyTerm, Graph, List } from './FancyUtil';
 
@@ -254,7 +255,9 @@ export function stringifyTerm(term: FancyTerm): string {
     return `_:${term.value}`;
   }
   if (term.termType === 'Literal') {
-    if (term.datatype.value === 'http://www.w3.org/2001/XMLSchema#boolean' || term.datatype.value === 'http://www.w3.org/2001/XMLSchema#number') {
+    if (term.datatype.value === 'http://www.w3.org/2001/XMLSchema#boolean' ||
+      term.datatype.value === 'http://www.w3.org/2001/XMLSchema#number' ||
+      term.datatype.value === 'http://www.w3.org/2001/XMLSchema#integer') {
       return term.value;
     }
     if (term.language) {
@@ -272,4 +275,10 @@ export function stringifyTerm(term: FancyTerm): string {
     return `( ${term.value.map(stringifyTerm).join(' ')} )`;
   }
   throw new Error(`Unsupported term type ${term.termType}`);
+}
+
+export function stringifyBinding(binding: Binding): string {
+  return JSON.stringify(Object.fromEntries(
+    Object.entries(binding).map(([ key, value ]): [ string, string ] => [ key, stringifyTerm(value) ]),
+  ));
 }

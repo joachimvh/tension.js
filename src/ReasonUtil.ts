@@ -8,7 +8,7 @@ import type { FancyQuad } from './FancyUtil';
 import { getLogger } from './LogUtil';
 import type { OverlapCache } from './OverlapUtil';
 import { applyClauseOverlap, findOverlappingClause } from './OverlapUtil';
-import { stringifyClause } from './ParseUtil';
+import { stringifyBinding, stringifyClause } from './ParseUtil';
 import { handleConjunctionResult, simplifyLevel1, simplifyLevel2, simplifyRoot } from './SimplifyUtil';
 
 const logger = getLogger('Reason');
@@ -90,7 +90,7 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
   for (const { binding, clause } of findBindResults(root, caches.bindingCache)) {
     const bound = applyBinding(clause, binding);
     if (bound) {
-      logger.debug(`generated ${stringifyClause(bound)} by applying ${JSON.stringify(binding)}`);
+      logger.debug(`generated ${stringifyClause(bound)} by applying ${stringifyBinding(binding)}`);
       change = handleNewClause(root, bound, newClauses) || change;
     }
   }
