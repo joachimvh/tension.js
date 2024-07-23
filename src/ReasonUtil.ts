@@ -90,7 +90,8 @@ export function reasonStep(root: RootClause, answerClauses: Clause[], caches: Re
   for (const { binding, clause } of findBindResults(root, caches.bindingCache)) {
     const bound = applyBinding(clause, binding);
     if (bound) {
-      logger.debug(`generated ${stringifyClause(bound)} by applying ${stringifyBinding(binding)}`);
+      logger.debug(`generated ${stringifyClause(bound)} by applying ${stringifyBinding(binding)
+      } to ${stringifyClause(clause)}`);
       change = handleNewClause(root, bound, newClauses) || change;
     }
   }
