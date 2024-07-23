@@ -150,7 +150,7 @@ function parseQuads(
   // For each field: either it's a new object with an @id, so recurse (unless only field),
   // it's a string, so parse, or could be complex value object
   for (const key of Object.keys(input)) {
-    if (key === '@id' || key === '@value' || key === '@list') {
+    if (key.startsWith('@') && key !== '@type') {
       continue;
     }
 
