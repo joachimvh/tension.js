@@ -5,6 +5,7 @@ import type { FancyTerm } from './FancyUtil';
 export const XSD_DATETIME = 'http://www.w3.org/2001/XMLSchema#dateTime';
 export const XSD_DATE = 'http://www.w3.org/2001/XMLSchema#date';
 export const XSD_DURATION = 'http://www.w3.org/2001/XMLSchema#duration';
+export const XSD_NUMBER = 'http://www.w3.org/2001/XMLSchema#number';
 
 export function compareLiterals(left: FancyTerm, right: FancyTerm): number | undefined {
   if (left.termType !== 'Literal' || right.termType !== 'Literal') {
@@ -94,5 +95,8 @@ export function performSum(left: FancyTerm, right: FancyTerm, minus: boolean): F
   }
   const leftNumber = Number.parseInt(left.value, 10);
   const rightNumber = Number.parseInt(right.value, 10);
-  return DataFactory.literal(minus ? leftNumber - rightNumber : leftNumber + rightNumber);
+  return DataFactory.literal(
+    minus ? leftNumber - rightNumber : leftNumber + rightNumber,
+    DataFactory.namedNode(XSD_NUMBER),
+  );
 }
