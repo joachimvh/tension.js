@@ -95,6 +95,12 @@ function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: Record<s
   Binding | undefined {
   const result: Binding = {};
 
+  const equal = fancyEquals(left, right);
+
+  if (equal) {
+    return {};
+  }
+
   if (isUniversal(left, quantifiers)) {
     if (result[left.value] && !fancyEquals(result[left.value], right)) {
       return;
@@ -122,7 +128,7 @@ function getTermBinding(left: FancyTerm, right: FancyTerm, quantifiers: Record<s
       Object.assign(result, partial);
     }
     return result;
-  } else if (!fancyEquals(left, right)) {
+  } else if (!equal) {
     return;
   }
 
@@ -223,23 +229,4 @@ function applyBindingsToTerm(term: FancyTerm, bindings: Binding): FancyTerm | un
     return;
   }
   return bindings[term.value];
-}
-
-export function isSameBinding(left: Record<string, FancyTerm>, right: Record<string, FancyTerm>): boolean {
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) {
-    return false;
-  }
-  leftKeys.sort();
-  rightKeys.sort();
-  for (const [ idx, key ] of leftKeys.entries()) {
-    if (key !== rightKeys[idx]) {
-      return false;
-    }
-    if (!fancyEquals(left[key], right[key])) {
-      return false;
-    }
-  }
-  return true;
 }

@@ -1,4 +1,5 @@
 import type { BlankNode, Literal, Term } from '@rdfjs/types';
+import type { Binding } from './BindUtil';
 import { QUAD_POSITIONS } from './ParseUtil';
 
 export type FancyQuad = {
@@ -37,6 +38,7 @@ export function isSimpleQuad(input: FancyQuad): input is SimpleQuad {
   return true;
 }
 
+// TODO: need to improve equality checks between number, integer and other literals
 export function fancyEquals(left: FancyQuad | FancyTerm, right: FancyQuad | FancyTerm): boolean {
   if ('subject' in left) {
     if (!('subject' in right)) {
@@ -68,22 +70,63 @@ export function fancyEquals(left: FancyQuad | FancyTerm, right: FancyQuad | Fanc
   return left.value === right.value;
 }
 
-export function compareTerms(
+export function compareQuadTerms(
   left: FancyQuad,
   right: FancyQuad,
-  comparator: (termLeft: FancyTerm, termRight: FancyTerm) => boolean | undefined,
+  comparator: (termLeft: FancyTerm, termRight: FancyTerm, binding: Binding) => boolean | undefined,
+  binding: Binding = {},
 ): boolean {
   for (const pos of QUAD_POSITIONS) {
     const termLeft = left[pos];
     const termRight = right[pos];
-    // TODO: here and all other ones: recursive checks in lists/graphs
-    const result = comparator(termLeft, termRight);
+
+    const result = compareTerms(termLeft, termRight, comparator, binding);
     if (typeof result === 'boolean') {
       return result;
     }
   }
 
   return true;
+}
+
+export function compareTerms(
+  termLeft: FancyTerm,
+  termRight: FancyTerm,
+  comparator: (termLeft: FancyTerm, termRight: FancyTerm, binding: Binding) => boolean | undefined,
+  binding: Binding = {},
+): boolean | undefined {
+  // TODO: merge these
+  if (termLeft.termType === 'BlankNode' && binding[termLeft.value] &&
+    !fancyEquals(termLeft, termRight) && !fancyEquals(binding[termLeft.value], termRight)) {
+    return false;
+  }
+  if (termRight.termType === 'BlankNode' && binding[termRight.value] &&
+    !fancyEquals(termRight, termLeft) && !fancyEquals(binding[termRight.value], termLeft)) {
+    return false;
+  }
+
+  if ((termLeft.termType === 'List' || termLeft.termType === 'Graph') && termRight.termType === termLeft.termType) {
+    if (termLeft.value.length !== termRight.value.length) {
+      return false;
+    }
+    for (let i = 0; i < termLeft.value.length; ++i) {
+      const compareFn = termLeft.termType === 'Graph' ? compareQuadTerms : compareTerms;
+      const result = compareFn(
+        termLeft.value[i] as FancyTerm & FancyQuad,
+        termRight.value[i] as FancyTerm & FancyQuad,
+        comparator,
+        binding,
+      );
+      if (typeof result === 'boolean') {
+        return result;
+      }
+    }
+  } else {
+    const result = comparator(termLeft, termRight, binding);
+    if (typeof result === 'boolean') {
+      return result;
+    }
+  }
 }
 
 // TODO: all the functions below have issues with for example the same blank node occurring twice in a quad,
@@ -95,11 +138,18 @@ export function equalOrUniversal(
   negative: FancyQuad,
   quantifiers: Record<string, number>,
 ): boolean {
-  return compareTerms(positive, negative, (termLeft, termRight): boolean | undefined => {
+  return compareQuadTerms(positive, negative, (termLeft, termRight, binding): boolean | undefined => {
     if (isUniversal(termLeft, quantifiers)) {
+      // TODO: doing duplicate checks, need to improve this structure
+      if (!fancyEquals(termLeft, termRight)) {
+        binding[termLeft.value] = termRight;
+      }
       return;
     }
     if (isUniversal(termRight, quantifiers)) {
+      if (!fancyEquals(termLeft, termRight)) {
+        binding[termRight.value] = termLeft;
+      }
       return;
     }
     if (!fancyEquals(termLeft, termRight)) {
@@ -114,11 +164,17 @@ export function equalOrExistential(
   negative: FancyQuad,
   quantifiers: Record<string, number>,
 ): boolean {
-  return compareTerms(positive, negative, (termLeft, termRight): boolean | undefined => {
+  return compareQuadTerms(positive, negative, (termLeft, termRight, binding): boolean | undefined => {
     if (isExistential(termLeft, quantifiers) && !isUniversal(termRight, quantifiers)) {
+      if (!fancyEquals(termLeft, termRight)) {
+        binding[termLeft.value] = termRight;
+      }
       return;
     }
     if (isExistential(termRight, quantifiers) && !isUniversal(termLeft, quantifiers)) {
+      if (!fancyEquals(termLeft, termRight)) {
+        binding[termRight.value] = termLeft;
+      }
       return;
     }
     if (!fancyEquals(termLeft, termRight)) {
@@ -127,10 +183,12 @@ export function equalOrExistential(
   });
 }
 
-// TODO: this function is identical to equalOrLeftUniversal, currently here for semantic reasons
 export function impliesQuad(left: FancyQuad, right: FancyQuad, quantifiers: Record<string, number>): boolean {
-  return compareTerms(left, right, (termLeft, termRight): boolean | undefined => {
+  return compareQuadTerms(left, right, (termLeft, termRight, binding): boolean | undefined => {
     if (isUniversal(termLeft, quantifiers)) {
+      if (!fancyEquals(termLeft, termRight)) {
+        binding[termLeft.value] = termRight;
+      }
       return;
     }
     // TODO: currently not using existentials as this breaks if you, for example,
