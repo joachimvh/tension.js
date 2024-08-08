@@ -150,12 +150,15 @@ function parseQuads(
   // For each field: either it's a new object with an @id, so recurse (unless only field),
   // it's a string, so parse, or could be complex value object
   for (const key of Object.keys(input)) {
-    if (key.startsWith('@') && key !== '@type') {
+    if (key.startsWith('@') && key !== '@type' && key !== '@list') {
       continue;
     }
 
     const val = input[key];
-    if (key === '@type') {
+    if (key === '@list') {
+      // List entries can potentially contain triple data
+      result.push(...parseQuads(val as Record<string, unknown>[], prefixes));
+    } else if (key === '@type') {
       if (newSubject.termType === 'Literal') {
         // Type was already parsed as datatype when parsing term
         continue;
