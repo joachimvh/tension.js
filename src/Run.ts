@@ -29,7 +29,7 @@ export async function runCli(args: string[]): Promise<void> {
     .name('node bin/tension.js')
     .showHelpAfterError()
     .argument('[string]', 'N3 string to parse, or a link to an N3 source, if no file was provided')
-    .option('-s, --steps <number>', 'max amount of steps', '5')
+    .option('-s, --steps <number>', 'max amount of steps, 0 for infinite', '0')
     .option('--ignoreAnswer', 'does not stop when an answer surface is resolved')
     .option('-f,--file <string>', 'file to read from')
     .option('-t,--timer', 'runs a timer')
