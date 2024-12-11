@@ -81,7 +81,7 @@ export function compareQuadTerms(
     const termRight = right[pos];
 
     const result = compareTerms(termLeft, termRight, comparator, binding);
-    if (typeof result === 'boolean') {
+    if (result === false) {
       return result;
     }
   }
